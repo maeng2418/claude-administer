@@ -347,11 +347,18 @@ export function App(): React.JSX.Element {
                 </div>
               )}
 
-              <div className="side-stat" title="자산이 어느 범위에서 왔는지">
-                <span>범위</span>
-                <span className="side-stat-value">
-                  전역 {stats.byScope.user} · 프로젝트 {stats.byScope.project} · 플러그인{' '}
-                  {stats.byScope.plugin}
+              <div className="side-stat side-stat-stack" title="자산이 어느 범위에서 왔는지">
+                <span className="side-stat-label">범위</span>
+                <span className="side-stat-scopes">
+                  <span className="side-scope">
+                    전역 <b>{stats.byScope.user}</b>
+                  </span>
+                  <span className="side-scope">
+                    프로젝트 <b>{stats.byScope.project}</b>
+                  </span>
+                  <span className="side-scope">
+                    플러그인 <b>{stats.byScope.plugin}</b>
+                  </span>
                 </span>
               </div>
             </>

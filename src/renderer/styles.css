@@ -429,6 +429,42 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  /* 라벨이 먼저 자리를 잡고 남은 폭을 값이 쓴다. */
+  min-width: 0;
+}
+
+/*
+  값이 길어 한 줄에 라벨과 나란히 둘 수 없는 항목은 세로로 쌓는다.
+  208px 사이드바에서 '전역 76 · 프로젝트 1 · 플러그인 0' 은 라벨과 나란히
+  두면 폭을 넘어 잘린다.
+*/
+.side-stat-stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+}
+
+.side-stat-label {
+  color: var(--text-faint);
+}
+
+.side-stat-scopes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.side-scope {
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.side-scope b {
+  color: var(--text-dim);
+  font-weight: 600;
 }
 
 /* 누를 수 있는 줄만 커서와 hover 를 준다 — 나머지는 읽는 값이다. */
