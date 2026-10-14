@@ -162,7 +162,8 @@ function registerHandlers(): void {
 
   ipcMain.handle('admin:listProjects', async (): Promise<ProjectListResult> => {
     const { projects: list, lastSelected, issues } = await projects().list()
-    return { projects: list, lastSelected, issues }
+    const hidden = await projects().hiddenProjects()
+    return { projects: list, hidden, lastSelected, issues }
   })
 
   ipcMain.handle(
@@ -195,6 +196,21 @@ function registerHandlers(): void {
       }
       try {
         await projects().remove(target)
+        return { ok: true }
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'admin:restoreProject',
+    async (_event, target: unknown): Promise<{ ok: boolean; error?: string }> => {
+      if (typeof target !== 'string' || target === '') {
+        return { ok: false, error: '경로가 올바르지 않습니다.' }
+      }
+      try {
+        await projects().unhide(target)
         return { ok: true }
       } catch (err) {
         return { ok: false, error: err instanceof Error ? err.message : String(err) }

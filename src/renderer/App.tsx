@@ -65,6 +65,7 @@ export function App(): React.JSX.Element {
   const [notice, setNotice] = useState<string | null>(null)
 
   const [projects, setProjects] = useState<ProjectRef[]>([])
+  const [hiddenProjects, setHiddenProjects] = useState<ProjectRef[]>([])
   const [selected, setSelected] = useState<string | null>(null)
   const [projectIssues, setProjectIssues] = useState<number>(0)
   /** 프로젝트 탐색 중 생긴 문제. 개수만으로는 무엇이 문제인지 알 수 없다. */
@@ -95,6 +96,7 @@ export function App(): React.JSX.Element {
     try {
       const result = await window.api.listProjects()
       setProjects(result.projects)
+      setHiddenProjects(result.hidden)
       setProjectIssues(result.issues.length)
       setProjectIssueDetail(
         result.issues.map((i) => `${i.path} — ${i.message}`).join(' / ')
@@ -136,18 +138,36 @@ export function App(): React.JSX.Element {
 
   const handleRemoveProject = useCallback(
     async (path: string) => {
+      const target = projects.find((p) => p.path === path)
       const result = await window.api.removeProject(path)
       if (!result.ok) {
         setNotice(`프로젝트 제거 실패: ${result.error ?? '알 수 없는 오류'}`)
         return
       }
       await loadProjects()
+      setNotice(
+        target?.origin === 'added'
+          ? `${target.name} 등록을 지웠습니다. 폴더는 그대로입니다.`
+          : `${target?.name ?? path} 을(를) 가렸습니다. 관리 창에서 되돌릴 수 있습니다.`
+      )
       if (selected === path) {
         setSelected(null)
         await scan(null)
       }
     },
-    [loadProjects, scan, selected]
+    [loadProjects, projects, scan, selected]
+  )
+
+  const handleRestoreProject = useCallback(
+    async (path: string) => {
+      const result = await window.api.restoreProject(path)
+      if (!result.ok) {
+        setNotice(`되돌리기 실패: ${result.error ?? '알 수 없는 오류'}`)
+        return
+      }
+      await loadProjects()
+    },
+    [loadProjects]
   )
 
   /**
@@ -292,6 +312,7 @@ export function App(): React.JSX.Element {
       {managing && (
         <ProjectManager
           projects={projects}
+          hidden={hiddenProjects}
           selected={selected}
           busy={loading}
           onSelect={(path) => {
@@ -300,6 +321,7 @@ export function App(): React.JSX.Element {
           }}
           onAdd={() => void handleAddProject()}
           onRemove={(path) => void handleRemoveProject(path)}
+          onRestore={(path) => void handleRestoreProject(path)}
           onClose={() => setManaging(false)}
         />
       )}

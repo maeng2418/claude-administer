@@ -14,19 +14,23 @@ import type { ProjectRef } from '../../shared/types.js'
  */
 export function ProjectManager({
   projects,
+  hidden,
   selected,
   busy,
   onSelect,
   onAdd,
   onRemove,
+  onRestore,
   onClose
 }: {
   projects: ProjectRef[]
+  hidden: ProjectRef[]
   selected: string | null
   busy?: boolean
   onSelect: (path: string | null) => void
   onAdd: () => void
   onRemove: (path: string) => void
+  onRestore: (path: string) => void
   onClose: () => void
 }): React.JSX.Element {
   const dialogRef = useRef<HTMLDivElement>(null)
@@ -76,8 +80,9 @@ export function ProjectManager({
         </div>
 
         <p className="modal-note">
-          Claude Code 사용 기록에서 찾은 프로젝트와 직접 추가한 폴더입니다. 직접 추가한
-          것만 목록에서 뺄 수 있고, 폴더와 파일은 건드리지 않습니다.
+          Claude Code 사용 기록에서 찾은 프로젝트와 직접 추가한 폴더입니다. 목록에서
+          빼도 폴더·파일과 Claude Code 의 대화 기록은 그대로 둡니다 — 사용 기록에서
+          찾은 것은 가리기만 하므로 아래에서 다시 꺼낼 수 있습니다.
         </p>
 
         <div className="modal-list" role="list">
@@ -117,19 +122,20 @@ export function ProjectManager({
                 <span className="proj-path">{p.path}</span>
               </button>
 
-              {/* 발견된 프로젝트는 레지스트리에 없으므로 뺄 대상이 아니다. */}
-              {p.origin === 'added' && (
-                <button
-                  type="button"
-                  className="btn btn-icon btn-danger"
-                  disabled={busy}
-                  onClick={() => onRemove(p.path)}
-                  title="목록에서만 뺍니다. 폴더와 파일은 그대로 둡니다."
-                  aria-label={`${p.name} 을(를) 목록에서 빼기`}
-                >
-                  <TrashIcon />
-                </button>
-              )}
+              <button
+                type="button"
+                className="btn btn-icon btn-danger"
+                disabled={busy}
+                onClick={() => onRemove(p.path)}
+                title={
+                  p.origin === 'added'
+                    ? '목록에서 등록을 지웁니다. 폴더와 파일은 그대로 둡니다.'
+                    : '목록에서 가립니다. 폴더와 Claude Code 대화 기록은 그대로 두며, 아래 "가린 프로젝트"에서 다시 꺼낼 수 있습니다.'
+                }
+                aria-label={`${p.name} 을(를) 목록에서 빼기`}
+              >
+                <TrashIcon />
+              </button>
             </div>
           ))}
 
@@ -137,6 +143,33 @@ export function ProjectManager({
             <div className="modal-empty">
               아직 아는 프로젝트가 없습니다. 폴더를 추가해 보세요.
             </div>
+          )}
+
+          {/*
+            가린 것은 목록 아래에 따로 둔다. 되돌릴 수 있다는 걸 보여주되,
+            평소에 보는 목록을 밀어내지는 않는다.
+          */}
+          {hidden.length > 0 && (
+            <details className="modal-hidden">
+              <summary>가린 프로젝트 {hidden.length}개</summary>
+              {hidden.map((p) => (
+                <div className="proj-row proj-row-group" key={p.path} role="listitem">
+                  <span className="proj-main">
+                    <span className="proj-name proj-name-muted">{p.name}</span>
+                    <span className="proj-path">{p.path}</span>
+                  </span>
+                  <button
+                    type="button"
+                    className="btn btn-sm"
+                    disabled={busy}
+                    onClick={() => onRestore(p.path)}
+                    title="다시 목록에 보이게 합니다"
+                  >
+                    되돌리기
+                  </button>
+                </div>
+              ))}
+            </details>
           )}
         </div>
 

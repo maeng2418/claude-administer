@@ -56,11 +56,25 @@ interface StoreShape {
   version: 1
   /** 사용자가 직접 추가한 프로젝트 경로. */
   added: string[]
+  /**
+   * 목록에서 숨긴 프로젝트 경로.
+   *
+   * 발견된 프로젝트는 ~/.claude/projects/ 의 세션 기록에서 나오는데, 그건
+   * Claude Code 의 대화 기록이라 우리가 지울 것이 아니다. 지우면 사용자의
+   * 실제 대화 로그가 사라진다. 그래서 숨김 목록에 넣어 가리기만 한다 —
+   * 되돌릴 수 있고, 남의 파일을 건드리지 않는다.
+   */
+  hidden: string[]
   /** 마지막으로 보고 있던 프로젝트 경로. */
   lastSelected: string | null
 }
 
-const EMPTY_STORE: StoreShape = { version: 1, added: [], lastSelected: null }
+const EMPTY_STORE: StoreShape = {
+  version: 1,
+  added: [],
+  hidden: [],
+  lastSelected: null
+}
 
 /** 경로가 임시 작업공간인지. */
 function isTransient(path: string): boolean {
@@ -230,9 +244,12 @@ async function readStore(storePath: string): Promise<StoreShape> {
     const added = Array.isArray(obj['added'])
       ? obj['added'].filter((v): v is string => typeof v === 'string')
       : []
+    const hidden = Array.isArray(obj['hidden'])
+      ? obj['hidden'].filter((v): v is string => typeof v === 'string')
+      : []
     const lastSelected =
       typeof obj['lastSelected'] === 'string' ? obj['lastSelected'] : null
-    return { version: 1, added, lastSelected }
+    return { version: 1, added, hidden, lastSelected }
   } catch {
     return { ...EMPTY_STORE }
   }
@@ -281,6 +298,7 @@ export class ProjectRegistry {
       this.cacheIssues = issues
     }
 
+    const hiddenPaths = new Set(store.hidden.map((p) => resolve(p)))
     const discoveredPaths = new Set(this.cache.map((p) => p.path))
 
     // 직접 추가한 것 중 지금도 존재하는 것만. 발견 목록과 겹치면 'added' 로 승격해
@@ -293,7 +311,7 @@ export class ProjectRegistry {
     const addedPaths = new Set(addedRefs.map((p) => p.path))
 
     const discoveredOnly = this.cache
-      .filter((p) => !addedPaths.has(p.path))
+      .filter((p) => !addedPaths.has(p.path) && !hiddenPaths.has(p.path))
       // 최근 사용 순.
       .sort((a, b) => (b.lastUsedAt ?? '').localeCompare(a.lastUsedAt ?? ''))
 
@@ -332,15 +350,47 @@ export class ProjectRegistry {
     return describe(normalized, 'added')
   }
 
-  /** 직접 추가한 것을 뺀다. 발견된 항목은 저장 목록에 없으므로 영향이 없다. */
+  /**
+   * 프로젝트를 목록에서 뺀다.
+   *
+   * 직접 추가한 것은 저장 목록에서 지우면 그만이다. 발견된 것은 세션 기록에서
+   * 계속 나오므로 숨김 목록에 넣는다 — ~/.claude/projects/ 를 지우면 사용자의
+   * 대화 기록이 사라지므로 그쪽은 건드리지 않는다.
+   */
   async remove(path: string): Promise<void> {
     const normalized = resolve(path)
     const store = await readStore(this.storePath)
-    const next = store.added.filter((p) => p !== normalized)
-    if (next.length === store.added.length && store.lastSelected !== normalized) return
-    store.added = next
+
+    const wasAdded = store.added.includes(normalized)
+    if (wasAdded) {
+      store.added = store.added.filter((p) => p !== normalized)
+    } else if (!store.hidden.includes(normalized)) {
+      store.hidden.push(normalized)
+    }
+
     if (store.lastSelected === normalized) store.lastSelected = null
     await writeStore(this.storePath, store)
+  }
+
+  /** 숨긴 프로젝트를 다시 보이게 한다. */
+  async unhide(path: string): Promise<void> {
+    const normalized = resolve(path)
+    const store = await readStore(this.storePath)
+    if (!store.hidden.includes(normalized)) return
+    store.hidden = store.hidden.filter((p) => p !== normalized)
+    await writeStore(this.storePath, store)
+  }
+
+  /** 숨긴 프로젝트 목록. 관리 창에서 되돌릴 수 있도록 보여준다. */
+  async hiddenProjects(): Promise<ProjectRef[]> {
+    const store = await readStore(this.storePath)
+    const out: ProjectRef[] = []
+    for (const path of store.hidden) {
+      if (!(await isDirectory(path))) continue
+      out.push(await describe(path, 'discovered'))
+    }
+    out.sort((a, b) => a.name.localeCompare(b.name))
+    return out
   }
 
   /** 지금 보고 있는 프로젝트를 기억해둔다. */

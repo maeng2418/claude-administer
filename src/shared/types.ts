@@ -262,6 +262,13 @@ export interface ToggleResult {
 /** 프로젝트 목록 조회 결과. 발견 과정의 문제도 함께 돌려준다. */
 export interface ProjectListResult {
   projects: ProjectRef[]
+  /**
+   * 목록에서 숨긴 프로젝트. 되돌릴 수 있도록 함께 돌려준다.
+   *
+   * 발견된 프로젝트는 Claude Code 의 세션 기록에서 나오므로 지울 수 없다 —
+   * 지우면 사용자의 대화 기록이 사라진다. 가리기만 한다.
+   */
+  hidden: ProjectRef[]
   /** 마지막으로 선택했던 프로젝트 경로. 없으면 null. */
   lastSelected: string | null
   issues: ScanIssue[]
@@ -275,8 +282,13 @@ export interface AdminApi {
   listProjects(): Promise<ProjectListResult>
   /** 폴더 선택 다이얼로그를 띄워 프로젝트를 추가한다. 취소하면 added 가 null. */
   addProject(): Promise<{ added: ProjectRef | null; error?: string }>
-  /** 직접 추가한 프로젝트를 목록에서 뺀다. 발견된 항목은 지울 수 없다. */
+  /**
+   * 프로젝트를 목록에서 뺀다. 직접 추가한 것은 등록을 지우고,
+   * 발견된 것은 숨긴다(세션 기록은 건드리지 않는다).
+   */
   removeProject(path: string): Promise<{ ok: boolean; error?: string }>
+  /** 숨긴 프로젝트를 다시 보이게 한다. */
+  restoreProject(path: string): Promise<{ ok: boolean; error?: string }>
   /** 자산을 켜거나 끈다. 어떤 키를 쓸지는 mechanism 이 정한다. */
   toggleAsset(request: ToggleRequest): Promise<ToggleResult>
   /** 자산을 제거한다. 확인 대화는 main 에서 띄운다. */
