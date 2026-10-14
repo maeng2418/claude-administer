@@ -1,0 +1,1 @@
+{"timestamp":"2026-10-14T01:52:13Z","event_key":"tool_failure:Bash:UnknownFailure","summary":"Exit code 1\n---versions---\nnode:internal/modules/cjs/loader:1522\n  throw err;\n  ^\n\nError: Cannot find module './node_modules/electron/package.json'\nRequire stack:\n- /Users/myeongseong.kim/Desktop/clau…","source":"tool:Bash"}

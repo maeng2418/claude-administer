@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      renderer 는 로컬 파일만 로드한다. 외부 스크립트/스타일을 쓰지 않으므로
+      CSP 를 좁게 잠근다. 폰트도 시스템 폰트만 쓴다.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; script-src 'self'"
+    />
+    <title>Claude Administer</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>

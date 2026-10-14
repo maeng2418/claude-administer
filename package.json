@@ -1,0 +1,36 @@
+{
+  "name": "claude-administer",
+  "version": "0.1.0",
+  "description": "Desktop UI to inspect and manage locally installed Claude Code assets (skills, agents, commands, hooks, plugins, MCP servers)",
+  "private": true,
+  "type": "module",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "npm run typecheck && electron-vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "test": "npm run typecheck && npm run build",
+    "start": "electron-vite preview",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder"
+  },
+  "dependencies": {
+    "yaml": "^2.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^5.2.0",
+    "electron": "^44.7.2",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^5.0.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "typescript": "^5.7.2",
+    "vite": "^7.3.7"
+  },
+  "allowScripts": {
+    "electron@44.7.2": true
+  }
+}
