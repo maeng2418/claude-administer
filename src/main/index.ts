@@ -160,11 +160,18 @@ function registerHandlers(): void {
     }
   )
 
-  ipcMain.handle('admin:listProjects', async (): Promise<ProjectListResult> => {
-    const { projects: list, lastSelected, issues } = await projects().list()
-    const hidden = await projects().hiddenProjects()
-    return { projects: list, hidden, lastSelected, issues }
-  })
+  ipcMain.handle(
+    'admin:listProjects',
+    async (_event, refresh: unknown): Promise<ProjectListResult> => {
+      // 발견 결과는 캐시된다 — 세션 파일 탐색이 디스크를 꽤 때리는데 목록이
+      // 탭 전환마다 바뀔 이유는 없다. 다만 '다시 읽기' 는 화면 전체를 최신으로
+      // 만드는 동작이므로 그때는 캐시를 버리고 다시 훑는다.
+      if (refresh === true) projects().invalidate()
+      const { projects: list, lastSelected, issues } = await projects().list()
+      const hidden = await projects().hiddenProjects()
+      return { projects: list, hidden, lastSelected, issues }
+    }
+  )
 
   ipcMain.handle(
     'admin:addProject',

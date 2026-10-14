@@ -92,9 +92,9 @@ export function App(): React.JSX.Element {
    * 첫 실행이라 기억된 선택이 없으면 전역만 읽는다 — 임의로 프로젝트를
    * 골라주면 어느 프로젝트를 보고 있는지 오해하게 된다.
    */
-  const loadProjects = useCallback(async () => {
+  const loadProjects = useCallback(async (refresh = false) => {
     try {
-      const result = await window.api.listProjects()
+      const result = await window.api.listProjects(refresh)
       setProjects(result.projects)
       setHiddenProjects(result.hidden)
       setProjectIssues(result.issues.length)
@@ -115,6 +115,16 @@ export function App(): React.JSX.Element {
       await scan(last)
     })()
   }, [loadProjects, scan])
+
+  /**
+   * 화면 전체를 최신으로. 자산뿐 아니라 프로젝트 목록도 다시 훑는다 —
+   * 앱을 띄운 뒤 다른 프로젝트에서 Claude Code 를 쓰면 그 프로젝트가
+   * 세션 기록에 새로 생기기 때문이다.
+   */
+  const refreshAll = useCallback(async () => {
+    await loadProjects(true)
+    await scan(selected)
+  }, [loadProjects, scan, selected])
 
   const handleSelect = useCallback(
     async (path: string | null) => {
@@ -449,8 +459,9 @@ export function App(): React.JSX.Element {
           <button
             type="button"
             className="btn"
-            onClick={() => void scan(selected)}
+            onClick={() => void refreshAll()}
             disabled={loading}
+            title="자산과 프로젝트 목록을 모두 다시 읽습니다"
           >
             {loading ? '읽는 중…' : '다시 읽기'}
           </button>

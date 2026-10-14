@@ -278,8 +278,12 @@ export interface ProjectListResult {
 export interface AdminApi {
   /** @param projectPath 스캔할 프로젝트 루트. 생략하면 전역 자산만 읽는다. */
   scan(projectPath?: string | null): Promise<Inventory>
-  /** 알고 있는 프로젝트 전체 목록 (발견 + 직접 추가). */
-  listProjects(): Promise<ProjectListResult>
+  /**
+   * 알고 있는 프로젝트 전체 목록 (발견 + 직접 추가).
+   *
+   * @param refresh true 면 캐시를 버리고 세션 기록을 다시 훑는다.
+   */
+  listProjects(refresh?: boolean): Promise<ProjectListResult>
   /** 폴더 선택 다이얼로그를 띄워 프로젝트를 추가한다. 취소하면 added 가 null. */
   addProject(): Promise<{ added: ProjectRef | null; error?: string }>
   /**

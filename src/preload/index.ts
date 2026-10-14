@@ -9,7 +9,7 @@ import type { AdminApi } from '../shared/types.js'
  */
 const api: AdminApi = {
   scan: (projectPath) => ipcRenderer.invoke('admin:scan', projectPath ?? null),
-  listProjects: () => ipcRenderer.invoke('admin:listProjects'),
+  listProjects: (refresh) => ipcRenderer.invoke('admin:listProjects', refresh === true),
   addProject: () => ipcRenderer.invoke('admin:addProject'),
   removeProject: (path) => ipcRenderer.invoke('admin:removeProject', path),
   restoreProject: (path) => ipcRenderer.invoke('admin:restoreProject', path),
