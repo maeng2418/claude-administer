@@ -398,101 +398,122 @@ body {
 
 .sidebar-foot {
   border-top: 1px solid var(--border);
-  padding: 8px 8px 10px;
+  padding: 10px 10px 12px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  /* 상태와 맥락 사이는 넓게, 맥락 안쪽은 좁게 — 간격이 묶음을 만든다. */
+  gap: 10px;
 }
 
 /*
-  사이드바 하단 요약 한 줄. 라벨은 왼쪽, 값은 오른쪽에 붙여
-  값끼리 세로로 정렬돼 훑기 쉽다.
+  모든 줄이 라벨 왼쪽 · 값 오른쪽 한 축을 쓴다. 값이 세로로 정렬돼
+  훑을 때 눈이 한 줄을 따라 내려간다.
 */
-.side-stat {
+.foot-row {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 8px;
+  gap: 10px;
+  width: 100%;
   padding: 3px 6px;
   border: 0;
   border-radius: 5px;
   background: none;
   font: inherit;
   font-size: 11px;
-  color: var(--text-faint);
+  line-height: 1.5;
   text-align: left;
-  width: 100%;
-}
-
-.side-stat-value {
-  color: var(--text-dim);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  /* 라벨이 먼저 자리를 잡고 남은 폭을 값이 쓴다. */
-  min-width: 0;
 }
 
 /*
-  값이 길어 한 줄에 라벨과 나란히 둘 수 없는 항목은 세로로 쌓는다.
-  208px 사이드바에서 '전역 76 · 프로젝트 1 · 플러그인 0' 은 라벨과 나란히
-  두면 폭을 넘어 잘린다.
+  라벨은 --text-faint 로는 3.33:1 이라 작은 글자 기준(4.5:1)에 못 미친다.
+  한 단계 올려 읽히게 하고, 값과의 구분은 색 대비 대신 무게로 만든다.
 */
-.side-stat-stack {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 3px;
-}
-
-.side-stat-label {
-  color: var(--text-faint);
-}
-
-.side-stat-scopes {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.side-scope {
-  padding: 1px 5px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  color: var(--text-faint);
+.foot-label {
+  color: var(--text-dim);
   white-space: nowrap;
 }
 
-.side-scope b {
+.foot-value {
   color: var(--text-dim);
+  font-weight: 500;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* 숫자가 자리를 옮기지 않도록 고정폭 숫자를 쓴다. */
+  font-variant-numeric: tabular-nums;
+}
+
+/* 조치할 수 있는 값은 본문 색으로 올려 사실들과 구분한다. */
+.foot-value-strong {
+  color: var(--text);
   font-weight: 600;
 }
 
-/* 누를 수 있는 줄만 커서와 hover 를 준다 — 나머지는 읽는 값이다. */
-.side-stat-action {
+.foot-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/*
+  범위는 숫자 셋뿐이다. 칩으로 감싸면 208px 에서 줄바꿈이 생기고,
+  테두리가 약한 근접성을 대신하려 든다. 구분자만 흐리게 둔다.
+*/
+.foot-scopes {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+}
+
+.foot-scopes b {
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.foot-scopes i {
+  font-style: normal;
+  color: var(--text-faint);
+}
+
+.foot-action {
   cursor: pointer;
+  transition: background 0.12s ease;
 }
 
-.side-stat-action:hover {
+.foot-action:hover {
   background: var(--bg-hover);
+}
+
+.foot-action:hover .foot-label,
+.foot-action:hover .foot-value {
   color: var(--text);
 }
 
-.side-stat-action.is-active {
+.foot-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.foot-action.is-active {
   background: var(--accent-dim);
+}
+
+.foot-action.is-active .foot-label,
+.foot-action.is-active .foot-value {
   color: var(--text);
 }
 
-.side-stat-action.is-active .side-stat-value {
-  color: var(--text);
-}
-
-.side-stat-warn .side-stat-value {
+.foot-warn .foot-value {
   color: var(--warn);
+  font-weight: 600;
 }
 
-/* 참고용 값은 한 단계 더 흐리게. */
-.side-stat-quiet {
-  opacity: 0.75;
+@media (prefers-reduced-motion: reduce) {
+  .foot-action {
+    transition: none;
+  }
 }
 
 /* 필터가 걸려 있음을 본문에서도 알린다 — 목록이 짧은 이유가 보여야 한다. */

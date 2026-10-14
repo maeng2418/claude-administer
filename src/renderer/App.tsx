@@ -321,73 +321,77 @@ export function App(): React.JSX.Element {
         </nav>
 
         <div className="sidebar-foot">
-          {stats && (
-            <>
-              {/* 꺼진 자산은 해당 행까지 가야 보인다. 여기에 모아 둔다. */}
-              {stats.off > 0 ? (
-                <button
-                  type="button"
-                  className={`side-stat side-stat-action${offOnly ? ' is-active' : ''}`}
-                  onClick={() => (offOnly ? setOffOnly(false) : showOffOnly())}
-                  title={
-                    offOnly
-                      ? '전체 자산을 다시 봅니다'
-                      : '꺼진 자산만 걸러서 봅니다 (탭을 옮기면 그 탭의 꺼진 자산이 보입니다)'
-                  }
-                >
-                  <span>꺼짐</span>
-                  <span className="side-stat-value">
-                    {offOnly ? '보는 중' : `${stats.off}개`}
-                  </span>
-                </button>
-              ) : (
-                <div className="side-stat">
-                  <span>꺼짐</span>
-                  <span className="side-stat-value">없음</span>
-                </div>
-              )}
+          {/*
+            상태: 지금 조치할 수 있는 유일한 항목. 아래 사실들과 떼어 둔다.
+          */}
+          {stats &&
+            (stats.off > 0 ? (
+              <button
+                type="button"
+                className={`foot-row foot-action${offOnly ? ' is-active' : ''}`}
+                onClick={() => (offOnly ? setOffOnly(false) : showOffOnly())}
+                title={
+                  offOnly
+                    ? '전체 자산을 다시 봅니다'
+                    : '꺼진 자산만 걸러서 봅니다 (탭을 옮기면 그 탭의 꺼진 자산이 보입니다)'
+                }
+              >
+                <span className="foot-label">꺼진 자산</span>
+                <span className="foot-value foot-value-strong">
+                  {offOnly ? '보는 중' : stats.off}
+                </span>
+              </button>
+            ) : (
+              <div className="foot-row">
+                <span className="foot-label">꺼진 자산</span>
+                <span className="foot-value">없음</span>
+              </div>
+            ))}
 
-              <div className="side-stat side-stat-stack" title="자산이 어느 범위에서 왔는지">
-                <span className="side-stat-label">범위</span>
-                <span className="side-stat-scopes">
-                  <span className="side-scope">
-                    전역 <b>{stats.byScope.user}</b>
-                  </span>
-                  <span className="side-scope">
-                    프로젝트 <b>{stats.byScope.project}</b>
-                  </span>
-                  <span className="side-scope">
-                    플러그인 <b>{stats.byScope.plugin}</b>
-                  </span>
+          {/* 맥락: 읽기만 하는 사실들. 서로 붙이고 한 단계 흐리게 둔다. */}
+          <div className="foot-facts">
+            {stats && (
+              <div
+                className="foot-row"
+                title={`전역 ${stats.byScope.user} · 프로젝트 ${stats.byScope.project} · 플러그인 ${stats.byScope.plugin}`}
+              >
+                <span className="foot-label">범위</span>
+                <span className="foot-value foot-scopes">
+                  <b>{stats.byScope.user}</b>
+                  <i>·</i>
+                  <b>{stats.byScope.project}</b>
+                  <i>·</i>
+                  <b>{stats.byScope.plugin}</b>
                 </span>
               </div>
-            </>
-          )}
+            )}
 
-          {projectIssues > 0 && (
-            <button
-              type="button"
-              className="side-stat side-stat-action side-stat-warn"
-              onClick={() => setNotice(projectIssueDetail)}
-              title="프로젝트를 찾는 중 생긴 문제를 봅니다"
-            >
-              <span>탐색 경고</span>
-              <span className="side-stat-value">{projectIssues}건</span>
-            </button>
-          )}
-
-          <div className="side-stat side-stat-quiet" title={inventory?.userRoot}>
-            <span>전역</span>
-            <span className="side-stat-value">~/.claude</span>
-          </div>
-
-          {scannedAtLabel && (
-            <div className="side-stat side-stat-quiet" title={inventory?.scannedAt}>
-              <span>마지막 스캔</span>
-              <span className="side-stat-value">{scannedAtLabel}</span>
+            <div className="foot-row" title={inventory?.userRoot}>
+              <span className="foot-label">전역</span>
+              <span className="foot-value">~/.claude</span>
             </div>
-          )}
+
+            {scannedAtLabel && (
+              <div className="foot-row" title={inventory?.scannedAt}>
+                <span className="foot-label">스캔</span>
+                <span className="foot-value">{scannedAtLabel}</span>
+              </div>
+            )}
+
+            {projectIssues > 0 && (
+              <button
+                type="button"
+                className="foot-row foot-action foot-warn"
+                onClick={() => setNotice(projectIssueDetail)}
+                title="프로젝트를 찾는 중 생긴 문제를 봅니다"
+              >
+                <span className="foot-label">탐색 경고</span>
+                <span className="foot-value">{projectIssues}</span>
+              </button>
+            )}
+          </div>
         </div>
+
       </aside>
 
       <main className="main">
