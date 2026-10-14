@@ -232,35 +232,23 @@ body {
 }
 
 /*
-  그룹 안 행은 왼쪽을 들여쓰고 세로 가이드선을 둬서 '묶여 있음'을 눈으로 보이게
-  한다. 들여쓰기만으로는 약해서, 본문 배경도 한 단계 눌러 바깥과 구분한다.
-
-  가이드선은 그룹 전체를 관통하는 한 줄이어야 한다. 행마다 그리면 행 사이
-  구분선에서 끊겨 점선처럼 보인다.
+  그룹 안 행은 왼쪽을 들여쓰고, 본문 배경을 한 단계 눌러 바깥과 구분한다.
+  세로 가이드선도 넣어봤지만 카드 사이에 간격이 생기면서 선이 끊겨 보여
+  오히려 노이즈가 됐다 — 들여쓰기와 배경만으로 충분하다.
 */
 .group-body {
   background: var(--bg);
-  position: relative;
-}
-
-.group-body::before {
-  content: '';
-  position: absolute;
-  left: 20px;
-  top: 4px;
-  bottom: 4px;
-  width: 2px;
-  border-radius: 2px;
-  background: var(--border);
+  padding: 4px 8px 8px;
 }
 
 .group-body .row {
-  border-radius: 0;
-  padding-left: 34px;
+  padding-left: 26px;
+  margin: 6px 0;
+  background: var(--bg-elev);
 }
 
-.group-body .row:last-child {
-  border-bottom: 0;
+.group-body .row:hover {
+  background: var(--bg-hover);
 }
 
 /* ---- 아이콘 버튼 ---- */
@@ -477,26 +465,29 @@ body {
 .content {
   flex: 1;
   overflow-y: auto;
-  padding: 4px 0 24px;
+  padding: 6px 14px 24px;
 }
 
 /* ---- 테이블 ---- */
+/*
+  행은 구분선 대신 간격으로 나눈다. 선이 없어도 여백이 경계를 만들고,
+  항목 하나가 덩어리로 읽혀 훑기 쉽다.
+*/
 .row {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 12px;
   align-items: baseline;
-  padding: 7px 16px;
-  border-bottom: 1px solid var(--border);
-}
-
-.row:hover {
+  padding: 8px 14px;
+  margin: 6px 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
   background: var(--bg-elev);
 }
 
-/* 마지막 행의 구분선은 바깥 테두리와 겹친다. */
-.row:last-child {
-  border-bottom: 0;
+.row:hover {
+  border-color: var(--border);
+  background: var(--bg-hover);
 }
 
 .row-main {
