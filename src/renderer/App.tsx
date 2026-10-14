@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { GroupedList } from './components/GroupedList.js'
+import { ProjectManager } from './components/ProjectManager.js'
 import { ProjectPicker } from './components/ProjectPicker.js'
 import type { Asset, AssetKind, Inventory, ProjectRef } from '../shared/types.js'
 
@@ -68,6 +69,8 @@ export function App(): React.JSX.Element {
   const [projectIssues, setProjectIssues] = useState<number>(0)
   /** 프로젝트 탐색 중 생긴 문제. 개수만으로는 무엇이 문제인지 알 수 없다. */
   const [projectIssueDetail, setProjectIssueDetail] = useState<string>('')
+  /** 프로젝트 관리 창이 열려 있는지. */
+  const [managing, setManaging] = useState(false)
 
   /** 자산을 다시 읽는다. 프로젝트 경로가 null 이면 전역만 읽는다. */
   const scan = useCallback(async (projectPath: string | null) => {
@@ -128,8 +131,6 @@ export function App(): React.JSX.Element {
     }
     if (!result.added) return
     await loadProjects()
-    setSelected(result.added.path)
-    await scan(result.added.path)
     setNotice(`${result.added.name} 을(를) 목록에 추가했습니다.`)
   }, [loadProjects, scan])
 
@@ -288,6 +289,21 @@ export function App(): React.JSX.Element {
 
   return (
     <div className="app">
+      {managing && (
+        <ProjectManager
+          projects={projects}
+          selected={selected}
+          busy={loading}
+          onSelect={(path) => {
+            void handleSelect(path)
+            setManaging(false)
+          }}
+          onAdd={() => void handleAddProject()}
+          onRemove={(path) => void handleRemoveProject(path)}
+          onClose={() => setManaging(false)}
+        />
+      )}
+
       <aside className="sidebar">
         <div className="sidebar-head">
           <div className="sidebar-title">Claude Administer</div>
@@ -301,8 +317,7 @@ export function App(): React.JSX.Element {
           selected={selected}
           disabled={loading}
           onSelect={handleSelect}
-          onAdd={handleAddProject}
-          onRemove={handleRemoveProject}
+          onManage={() => setManaging(true)}
         />
 
         <nav className="nav">
@@ -328,6 +343,8 @@ export function App(): React.JSX.Element {
             (stats.off > 0 ? (
               <button
                 type="button"
+                role="switch"
+                aria-checked={offOnly}
                 className={`foot-row foot-action${offOnly ? ' is-active' : ''}`}
                 onClick={() => (offOnly ? setOffOnly(false) : showOffOnly())}
                 title={
@@ -336,9 +353,12 @@ export function App(): React.JSX.Element {
                     : '꺼진 자산만 걸러서 봅니다 (탭을 옮기면 그 탭의 꺼진 자산이 보입니다)'
                 }
               >
-                <span className="foot-label">꺼진 자산</span>
-                <span className="foot-value foot-value-strong">
-                  {offOnly ? '보는 중' : stats.off}
+                <span className="foot-label">
+                  꺼진 자산 보기
+                  <span className="foot-badge">{stats.off}</span>
+                </span>
+                <span className={`switch-track${offOnly ? ' is-on' : ''}`}>
+                  <span className="switch-thumb" />
                 </span>
               </button>
             ) : (

@@ -6,32 +6,45 @@ import type { ProjectRef } from '../../shared/types.js'
  * 한 번에 한 프로젝트만 본다. 여러 프로젝트를 한 목록에 합치지 않는 이유는
  * 충돌 배지("가려짐")가 거짓이 되기 때문이다 — 가림은 같은 프로젝트 안에서
  * 전역 대 프로젝트일 때만 일어나고, 다른 프로젝트끼리는 서로 영향이 없다.
+ *
+ * 등록·삭제는 관리 창으로 분리했다. 전환은 자주, 등록은 드물다.
  */
 export function ProjectPicker({
   projects,
   selected,
   disabled,
   onSelect,
-  onAdd,
-  onRemove
+  onManage
 }: {
   projects: ProjectRef[]
   selected: string | null
   disabled?: boolean
   onSelect: (path: string | null) => void
-  onAdd: () => void
-  onRemove: (path: string) => void
+  onManage: () => void
 }): React.JSX.Element {
   const current = projects.find((p) => p.path === selected) ?? null
-  const added = projects.filter((p) => p.origin === 'added')
-  const discovered = projects.filter((p) => p.origin === 'discovered')
 
   return (
     <div className="picker">
-      <label className="picker-label" htmlFor="project-select">
-        프로젝트
-      </label>
+      <div className="picker-head">
+        <label className="picker-label" htmlFor="project-select">
+          프로젝트
+        </label>
+        <button
+          type="button"
+          className="picker-manage"
+          onClick={onManage}
+          disabled={disabled}
+          title="프로젝트를 추가하거나 목록에서 뺍니다"
+        >
+          관리
+        </button>
+      </div>
 
+      {/*
+        출처(직접 추가 / 사용 기록)로 묶지 않는다. 고를 때 필요한 건 이름이고,
+        출처는 관리 창에서 배지로 본다. 묶으면 목록만 쪼개진다.
+      */}
       <select
         id="project-select"
         className="picker-select"
@@ -40,24 +53,11 @@ export function ProjectPicker({
         onChange={(e) => onSelect(e.target.value === '' ? null : e.target.value)}
       >
         <option value="">전역만 보기 (~/.claude)</option>
-        {added.length > 0 && (
-          <optgroup label="직접 추가">
-            {added.map((p) => (
-              <option key={p.path} value={p.path}>
-                {p.name}
-              </option>
-            ))}
-          </optgroup>
-        )}
-        {discovered.length > 0 && (
-          <optgroup label="사용 기록에서 발견">
-            {discovered.map((p) => (
-              <option key={p.path} value={p.path}>
-                {p.name}
-              </option>
-            ))}
-          </optgroup>
-        )}
+        {projects.map((p) => (
+          <option key={p.path} value={p.path}>
+            {p.name}
+          </option>
+        ))}
       </select>
 
       {current && (
@@ -69,23 +69,6 @@ export function ProjectPicker({
       {current && !current.hasClaudeDir && !current.hasMcpConfig && (
         <div className="picker-warn">이 폴더에는 .claude/ 도 .mcp.json 도 없습니다.</div>
       )}
-
-      <div className="picker-actions">
-        <button type="button" className="btn btn-sm" onClick={onAdd} disabled={disabled}>
-          폴더 추가
-        </button>
-        {current?.origin === 'added' && (
-          <button
-            type="button"
-            className="btn btn-sm"
-            onClick={() => onRemove(current.path)}
-            disabled={disabled}
-            title="목록에서만 빼며, 폴더와 파일은 건드리지 않습니다"
-          >
-            목록에서 빼기
-          </button>
-        )}
-      </div>
     </div>
   )
 }
