@@ -12,7 +12,9 @@
     "test": "npm run typecheck && npm run build",
     "start": "electron-vite preview",
     "pack": "npm run build && electron-builder --dir",
-    "dist": "npm run build && electron-builder"
+    "dist": "npm run build && electron-builder",
+    "install:app": "sh scripts/install.sh",
+    "release": "npm run dist && sh scripts/install.sh"
   },
   "dependencies": {
     "yaml": "^2.8.1"

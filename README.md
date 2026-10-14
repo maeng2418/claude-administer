@@ -171,6 +171,8 @@ npm run typecheck   # main + renderer 타입 검사
 npm run build       # out/ 에 번들 생성
 npm run pack        # release/mac-arm64/ 에 .app 생성 (서명 없음)
 npm run dist        # 위에 더해 release/ 에 .dmg 생성
+npm run install:app # 빌드한 앱을 /Applications 에 설치하고 다시 실행
+npm run release     # dist + install:app 을 한 번에
 ```
 
 ## 안전장치
