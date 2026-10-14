@@ -3,10 +3,14 @@ import { isAbsolute, join, resolve, sep } from 'node:path'
 import { scanInventory, userClaudeRoot } from './scanner.js'
 import { ProjectRegistry, storePathFor } from './projects.js'
 import { toggleAsset } from './settings.js'
+import { removeAsset } from './remove.js'
 import type {
   Inventory,
   ProjectListResult,
   ProjectRef,
+  RemoveMechanism,
+  RemoveRequest,
+  RemoveResult,
   ToggleMechanism,
   ToggleRequest,
   ToggleResult
@@ -121,6 +125,32 @@ function parseToggleRequest(raw: unknown): ToggleRequest | string {
   return { mechanism: mechanism as ToggleMechanism, key, enabled }
 }
 
+const REMOVE_MECHANISMS: RemoveMechanism[] = ['trash', 'pluginUninstall']
+
+function parseRemoveRequest(raw: unknown): RemoveRequest | string {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return '제거 요청 형식이 올바르지 않습니다.'
+  }
+  const value = raw as Record<string, unknown>
+  const mechanism = value['mechanism']
+  if (
+    typeof mechanism !== 'string' ||
+    !REMOVE_MECHANISMS.includes(mechanism as RemoveMechanism)
+  ) {
+    return '지원하지 않는 제거 방식입니다.'
+  }
+  const target = value['target']
+  if (typeof target !== 'string' || target === '') {
+    return '제거 대상이 올바르지 않습니다.'
+  }
+  const label = value['label']
+  return {
+    mechanism: mechanism as RemoveMechanism,
+    target,
+    label: typeof label === 'string' && label !== '' ? label : target
+  }
+}
+
 function registerHandlers(): void {
   ipcMain.handle(
     'admin:scan',
@@ -191,6 +221,61 @@ function registerHandlers(): void {
         }
       }
       return toggleAsset(parsed)
+    }
+  )
+
+  ipcMain.handle(
+    'admin:removeAsset',
+    async (event, raw: unknown): Promise<RemoveResult> => {
+      const parsed = parseRemoveRequest(raw)
+      if (typeof parsed === 'string') {
+        return { ok: false, mechanism: 'trash', target: '', error: parsed }
+      }
+
+      // 휴지통 대상은 경로 가드를 통과해야 한다. 임의 경로를 지우게 두면
+      // IPC 가 파일 삭제 우회로가 된다.
+      if (parsed.mechanism === 'trash' && !(await isAllowedPath(parsed.target))) {
+        return {
+          ok: false,
+          mechanism: 'trash',
+          target: parsed.target,
+          error: '허용되지 않은 경로입니다.'
+        }
+      }
+
+      // 되돌릴 수 있는지에 따라 안내 문구가 다르다 — 플러그인은 휴지통을
+      // 거치지 않으므로 그 사실을 분명히 적는다.
+      const restorable = parsed.mechanism === 'trash'
+      const detail = restorable
+        ? '휴지통으로 이동합니다. Finder 에서 "되돌리기" 로 복구할 수 있습니다.'
+        : 'claude plugin uninstall 로 제거합니다. 휴지통을 거치지 않지만 다시 설치할 수 있습니다.'
+
+      const window = BrowserWindow.fromWebContents(event.sender)
+      const options = {
+        type: 'warning' as const,
+        buttons: ['제거', '취소'],
+        defaultId: 1,
+        cancelId: 1,
+        title: '제거 확인',
+        message: `${parsed.label} 을(를) 제거할까요?`,
+        detail: `대상: ${parsed.target}\n\n${detail}`
+      }
+      const { response } = window
+        ? await dialog.showMessageBox(window, options)
+        : await dialog.showMessageBox(options)
+
+      if (response !== 0) {
+        return {
+          ok: false,
+          canceled: true,
+          mechanism: parsed.mechanism,
+          target: parsed.target
+        }
+      }
+
+      const result = await removeAsset(parsed)
+      // 플러그인을 지웠으면 프로젝트 캐시는 그대로지만 자산 목록이 바뀐다.
+      return result
     }
   )
 

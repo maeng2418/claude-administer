@@ -26,6 +26,13 @@ export interface ToggleCapability {
   enabled: boolean
   /** mechanism 이 null 일 때 왜 끌 수 없는지. UI 툴팁에 쓴다. */
   reason?: string
+  /**
+   * 직접 끌 수는 없지만 이 플러그인을 끄면 함께 꺼지는 경우, 그 플러그인 ID.
+   *
+   * UI 는 이 값이 있으면 '끄기 불가' 대신 해당 플러그인으로 이동하는 버튼을
+   * 보여준다 — 막다른 버튼보다 다음 행동을 주는 쪽이 낫다.
+   */
+  viaPlugin?: string
 }
 
 /** 토글 요청. renderer 가 보내는 값이므로 main 에서 다시 검사한다. */
@@ -34,6 +41,49 @@ export interface ToggleRequest {
   /** skillOverrides / permissionsDeny 는 자산 이름, enabledPlugins 는 플러그인 ID. */
   key: string
   enabled: boolean
+}
+
+/**
+ * 자산을 제거하는 방법.
+ *
+ *  - trash: 파일이나 디렉토리를 macOS 휴지통으로 보낸다. Finder 에서 되돌릴 수 있다.
+ *  - pluginUninstall: `claude plugin uninstall` 를 호출한다. installed_plugins.json 과
+ *    cache/ 를 직접 쓰지 않는 이유는 그 파일들을 Claude Code 가 소유하기 때문이다.
+ *    영구 삭제지만 재설치할 수 있다.
+ */
+export type RemoveMechanism = 'trash' | 'pluginUninstall'
+
+/** 자산 하나의 제거 가능 여부. */
+export interface RemoveCapability {
+  /** 제거할 수 있으면 어떤 방법으로. 못 하면 null. */
+  mechanism: RemoveMechanism | null
+  /** 실제로 지워지는 대상. 확인 대화에 그대로 보여준다. */
+  target?: string
+  /** mechanism 이 null 일 때 왜 못 지우는지. */
+  reason?: string
+  /** 휴지통으로 가는지(되돌릴 수 있는지). */
+  restorable?: boolean
+}
+
+/** 제거 요청. renderer 가 보내는 값이므로 main 에서 다시 검사한다. */
+export interface RemoveRequest {
+  mechanism: RemoveMechanism
+  /** trash 면 경로, pluginUninstall 이면 플러그인 ID. */
+  target: string
+  /** 확인 대화에 보여줄 이름. */
+  label: string
+}
+
+/** 제거 결과. */
+export interface RemoveResult {
+  ok: boolean
+  /** 사용자가 확인 대화에서 취소했는지. 취소는 오류가 아니다. */
+  canceled?: boolean
+  mechanism: RemoveMechanism
+  target: string
+  /** 휴지통으로 보냈으면 true. UI 가 복구 방법을 안내한다. */
+  trashed?: boolean
+  error?: string
 }
 
 /** 모든 자산이 공유하는 필드. */
@@ -54,6 +104,8 @@ export interface AssetBase {
    * 것만 토글을 노출하고, 나머지는 이유를 붙여 비활성으로 보여준다.
    */
   toggle?: ToggleCapability
+  /** 이 자산을 제거할 수 있는지, 못 하면 왜인지. */
+  remove?: RemoveCapability
   /**
    * 같은 kind·같은 name 이 다른 scope 에도 존재할 때 그 scope 목록.
    * 비어있지 않으면 UI 에 충돌 배지를 띄운다.
@@ -202,6 +254,8 @@ export interface AdminApi {
   removeProject(path: string): Promise<{ ok: boolean; error?: string }>
   /** 자산을 켜거나 끈다. 어떤 키를 쓸지는 mechanism 이 정한다. */
   toggleAsset(request: ToggleRequest): Promise<ToggleResult>
+  /** 자산을 제거한다. 확인 대화는 main 에서 띄운다. */
+  removeAsset(request: RemoveRequest): Promise<RemoveResult>
   openPath(path: string): Promise<{ ok: boolean; error?: string }>
   revealPath(path: string): Promise<{ ok: boolean; error?: string }>
 }

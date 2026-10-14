@@ -13,6 +13,7 @@ const api: AdminApi = {
   addProject: () => ipcRenderer.invoke('admin:addProject'),
   removeProject: (path) => ipcRenderer.invoke('admin:removeProject', path),
   toggleAsset: (request) => ipcRenderer.invoke('admin:toggleAsset', request),
+  removeAsset: (request) => ipcRenderer.invoke('admin:removeAsset', request),
   openPath: (path) => ipcRenderer.invoke('admin:openPath', path),
   revealPath: (path) => ipcRenderer.invoke('admin:revealPath', path)
 }

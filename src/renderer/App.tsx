@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { AssetRow } from './components/AssetRow.js'
+import { GroupedList } from './components/GroupedList.js'
 import { ProjectPicker } from './components/ProjectPicker.js'
 import type { Asset, AssetKind, Inventory, ProjectRef } from '../shared/types.js'
 
@@ -138,6 +138,18 @@ export function App(): React.JSX.Element {
     [loadProjects, scan, selected]
   )
 
+  /**
+   * 플러그인 탭으로 이동해 해당 플러그인만 보여준다.
+   *
+   * 검색창에 ID 를 넣는 방식을 쓴다 — 별도 선택 상태를 두면 검색과 어긋나고,
+   * 사용자가 왜 그 행만 보이는지 알 수 없게 된다. 검색어로 두면 보이는 그대로다.
+   */
+  const handleGoToPlugin = useCallback((pluginId: string) => {
+    setTab('plugin')
+    setQuery(pluginId)
+    setNotice(`플러그인 "${pluginId}" 로 이동했습니다. 끄면 이 플러그인이 제공하는 자산도 함께 꺼집니다.`)
+  }, [])
+
   const handleOpen = useCallback(async (path: string) => {
     const result = await window.api.openPath(path)
     if (!result.ok) setNotice(`열기 실패: ${result.error ?? '알 수 없는 오류'}`)
@@ -174,6 +186,37 @@ export function App(): React.JSX.Element {
         await scan(selected)
       } else {
         setNotice(`토글 실패: ${result.error ?? '알 수 없는 오류'}`)
+      }
+      setBusyKey(null)
+    },
+    [scan, selected]
+  )
+
+  /**
+   * 자산 제거. 확인 대화는 main 에서 띄우므로 여기서는 결과만 처리한다.
+   * 취소는 오류가 아니라 아무 일도 없던 것으로 둔다.
+   */
+  const handleRemove = useCallback(
+    async (asset: Asset) => {
+      const remove = asset.remove
+      if (!remove?.mechanism || !remove.target) return
+
+      setBusyKey(rowKeyFor(asset))
+      setNotice(null)
+      const result = await window.api.removeAsset({
+        mechanism: remove.mechanism,
+        target: remove.target,
+        label: asset.name
+      })
+      if (result.ok) {
+        setNotice(
+          result.trashed
+            ? `${asset.name} 을(를) 휴지통으로 보냈습니다. Finder 에서 "되돌리기" 로 복구할 수 있습니다.`
+            : `${asset.name} 을(를) 제거했습니다. 변경은 Claude Code 재시작 후 적용됩니다.`
+        )
+        await scan(selected)
+      } else if (!result.canceled) {
+        setNotice(`제거 실패: ${result.error ?? '알 수 없는 오류'}`)
       }
       setBusyKey(null)
     },
@@ -296,16 +339,18 @@ export function App(): React.JSX.Element {
             </div>
           )}
 
-          {rows.map((asset) => (
-            <AssetRow
-              key={rowKeyFor(asset)}
-              asset={asset}
-              onOpen={handleOpen}
-              onReveal={handleReveal}
-              onToggle={handleToggle}
-              busy={busyKey === rowKeyFor(asset)}
-            />
-          ))}
+          <GroupedList
+            assets={rows}
+            plugins={inventory?.plugins ?? []}
+            searching={query !== ''}
+            onOpen={handleOpen}
+            onReveal={handleReveal}
+            onToggle={handleToggle}
+            onGoToPlugin={handleGoToPlugin}
+            onRemove={handleRemove}
+            busyKey={busyKey}
+            rowKeyFor={rowKeyFor}
+          />
         </div>
       </main>
     </div>

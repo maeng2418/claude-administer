@@ -138,6 +138,89 @@ body {
   gap: 6px;
 }
 
+/* ---- 플러그인 그룹 ---- */
+.group {
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  margin: 6px 0;
+  overflow: hidden;
+}
+
+.group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--bg-raised);
+  border-bottom: 1px solid transparent;
+}
+
+.group:has(.group-body) .group-head {
+  border-bottom-color: var(--border);
+}
+
+.group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  padding: 2px 0;
+  font: inherit;
+  color: var(--text);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.group-toggle:disabled {
+  cursor: default;
+}
+
+.group-caret {
+  color: var(--text-faint);
+  width: 10px;
+  flex: none;
+}
+
+.group-name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.group-actions {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+
+/* 그룹 안의 행은 바깥 테두리와 겹치지 않게 한다. */
+.group-body .row {
+  border-radius: 0;
+  border-left: 0;
+  border-right: 0;
+}
+
+.group-body .row:last-child {
+  border-bottom: 0;
+}
+
+/* 되돌릴 수 없는 동작은 색으로도 구분한다. 색만으로 전달하지 않도록
+   버튼 글자는 '제거'로 명시하고 title 에 사유를 적는다. */
+.btn-danger {
+  border-color: var(--danger, #b05050);
+  color: var(--danger, #b05050);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: var(--danger, #b05050);
+  color: #fff;
+}
+
 /* 꺼진 자산의 '켜기' 버튼을 눈에 띄게 한다. */
 .btn-on {
   border-color: var(--accent, #4a7dd8);

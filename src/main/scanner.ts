@@ -13,6 +13,7 @@ import type {
   ProjectRef,
   ScanIssue,
   Scope,
+  RemoveCapability,
   SkillAsset,
   ToggleCapability
 } from '../shared/types.js'
@@ -156,9 +157,38 @@ const NO_TOGGLE_REASONS = {
   mcp: 'MCP 서버는 mcp.json 의 항목을 직접 지워야 끌 수 있습니다. 편집기로 열어 수정하세요.'
 } as const
 
-/** 끌 수 없음을 나타내는 ToggleCapability. */
-function cannotToggle(reason: string): ToggleCapability {
-  return { mechanism: null, enabled: true, reason }
+/** 제거할 수 없는 자산에 붙일 사유. */
+const NO_REMOVE_REASONS = {
+  pluginProvided:
+    '플러그인이 제공하는 자산은 개별 제거할 수 없습니다. 플러그인 자체를 제거하세요.',
+  hook: '훅은 settings.json 의 hooks 항목을 직접 지워야 합니다. 편집기로 열어 수정하세요.',
+  mcp: 'MCP 서버는 mcp.json 의 항목을 직접 지워야 합니다. 편집기로 열어 수정하세요.'
+} as const
+
+/** 휴지통으로 보낼 수 있음. 되돌릴 수 있다. */
+function trashable(target: string): RemoveCapability {
+  return { mechanism: 'trash', target, restorable: true }
+}
+
+/** 제거할 수 없음. */
+function cannotRemove(reason: string): RemoveCapability {
+  return { mechanism: null, reason }
+}
+
+/**
+ * 끌 수 없음을 나타내는 ToggleCapability.
+ *
+ * viaPlugin 을 주면 UI 가 '끄기 불가' 대신 그 플러그인으로 이동하는 버튼을
+ * 보여준다. 플러그인이 제공한 자산은 플러그인을 끄면 함께 꺼지므로,
+ * 끝이 아니라 경유지다.
+ */
+function cannotToggle(reason: string, viaPlugin?: string): ToggleCapability {
+  return {
+    mechanism: null,
+    enabled: true,
+    reason,
+    ...(viaPlugin ? { viaPlugin } : {})
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -204,8 +234,13 @@ async function scanSkills(
       ...(sourcePlugin ? { sourcePlugin } : {}),
       // 플러그인이 제공하는 스킬은 skillOverrides 로 끌 수 없다(공식 문서 확인).
       toggle: sourcePlugin
-        ? cannotToggle(NO_TOGGLE_REASONS.pluginSkill)
+        ? cannotToggle(NO_TOGGLE_REASONS.pluginSkill, sourcePlugin)
         : { mechanism: 'skillOverrides', enabled: !off },
+      // 스킬은 디렉토리 단위다. 플러그인 제공 스킬은 플러그인 캐시 안에 있어
+      // 개별 삭제하면 플러그인이 깨지므로 제거 대상이 아니다.
+      remove: sourcePlugin
+        ? cannotRemove(NO_REMOVE_REASONS.pluginProvided)
+        : trashable(join(dir, entry.name)),
       ...(sourcePlugin ? {} : { disabled: off })
     })
   }
@@ -248,6 +283,10 @@ async function scanAgents(
         model: readString(meta, 'model'),
         // permissions.deny 의 Agent(name) 은 플러그인 제공 에이전트에도 적용된다.
         toggle: { mechanism: 'permissionsDeny', enabled: !denied },
+        remove:
+          scope === 'plugin'
+            ? cannotRemove(NO_REMOVE_REASONS.pluginProvided)
+            : trashable(full),
         disabled: denied
       })
     }
@@ -296,9 +335,12 @@ async function scanCommands(
         description: readString(meta, 'description'),
         invocation: `/${name}`,
         ...(sourcePlugin ? { sourcePlugin } : {}),
-        toggle: cannotToggle(
-          sourcePlugin ? NO_TOGGLE_REASONS.pluginAsset : NO_TOGGLE_REASONS.command
-        )
+        toggle: sourcePlugin
+          ? cannotToggle(NO_TOGGLE_REASONS.pluginAsset, sourcePlugin)
+          : cannotToggle(NO_TOGGLE_REASONS.command),
+        remove: sourcePlugin
+          ? cannotRemove(NO_REMOVE_REASONS.pluginProvided)
+          : trashable(full)
       })
     }
   }
@@ -360,7 +402,8 @@ function extractHooks(
           async: typeof hook['async'] === 'boolean' ? hook['async'] : undefined,
           description: summarizeCommand(command),
           index: index++,
-          toggle: cannotToggle(NO_TOGGLE_REASONS.hook)
+          toggle: cannotToggle(NO_TOGGLE_REASONS.hook),
+          remove: cannotRemove(NO_REMOVE_REASONS.hook)
         })
       }
     }
@@ -422,7 +465,8 @@ function extractMcp(
       description: command
         ? summarizeCommand([command, ...(args ?? [])].join(' '))
         : url,
-      toggle: cannotToggle(NO_TOGGLE_REASONS.mcp)
+      toggle: cannotToggle(NO_TOGGLE_REASONS.mcp),
+      remove: cannotRemove(NO_REMOVE_REASONS.mcp)
     })
   }
   return out
@@ -506,7 +550,10 @@ async function scanPlugins(
         commands: pCommands.length,
         agents: pAgents.length
       },
-      toggle: { mechanism: 'enabledPlugins', enabled }
+      toggle: { mechanism: 'enabledPlugins', enabled },
+      // 플러그인은 공식 CLI 로 제거한다. 휴지통을 거치지 않아 되돌릴 수 없지만
+      // 재설치할 수 있다.
+      remove: { mechanism: 'pluginUninstall', target: id, restorable: false }
     })
   }
 

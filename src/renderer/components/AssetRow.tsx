@@ -7,12 +7,17 @@ export function AssetRow({
   onOpen,
   onReveal,
   onToggle,
+  onGoToPlugin,
+  onRemove,
   busy
 }: {
   asset: Asset
   onOpen: (path: string) => void
   onReveal: (path: string) => void
   onToggle?: (asset: Asset, next: boolean) => void
+  /** 플러그인 탭으로 이동해 해당 플러그인을 찾아준다. */
+  onGoToPlugin?: (pluginId: string) => void
+  onRemove?: (asset: Asset) => void
   busy?: boolean
 }): React.JSX.Element {
   const isOff = asset.disabled === true
@@ -34,7 +39,15 @@ export function AssetRow({
       </div>
 
       <div className="row-actions">
-        {onToggle && <ToggleButton asset={asset} onToggle={onToggle} busy={busy} />}
+        {onToggle && (
+          <ToggleButton
+            asset={asset}
+            onToggle={onToggle}
+            onGoToPlugin={onGoToPlugin}
+            busy={busy}
+          />
+        )}
+        {onRemove && <RemoveButton asset={asset} onRemove={onRemove} busy={busy} />}
         <button
           type="button"
           className="btn btn-sm"
@@ -66,16 +79,32 @@ export function AssetRow({
 function ToggleButton({
   asset,
   onToggle,
+  onGoToPlugin,
   busy
 }: {
   asset: Asset
   onToggle: (asset: Asset, next: boolean) => void
+  onGoToPlugin?: (pluginId: string) => void
   busy?: boolean
 }): React.JSX.Element | null {
   const toggle = asset.toggle
   if (!toggle) return null
 
   if (toggle.mechanism === null) {
+    // 플러그인을 끄면 함께 꺼지는 자산이면, 막다른 버튼 대신 그 플러그인으로 보낸다.
+    if (toggle.viaPlugin && onGoToPlugin) {
+      const pluginId = toggle.viaPlugin
+      return (
+        <button
+          type="button"
+          className="btn btn-sm"
+          onClick={() => onGoToPlugin(pluginId)}
+          title={`${toggle.reason ?? ''}\n\n누르면 플러그인 탭에서 ${pluginId} 를 찾아줍니다.`}
+        >
+          플러그인으로
+        </button>
+      )
+    }
     return (
       <button type="button" className="btn btn-sm" disabled title={toggle.reason}>
         끄기 불가
@@ -100,6 +129,41 @@ function ToggleButton({
       title={`${mechanismLabel} 를 백업 후 수정합니다 (Claude Code 재시작 후 적용)`}
     >
       {busy ? '…' : isOn ? '끄기' : '켜기'}
+    </button>
+  )
+}
+
+/**
+ * 제거 버튼.
+ *
+ * 제거할 수 없는 자산에는 버튼을 아예 그리지 않는다 — 토글과 달리 '제거 불가'를
+ * 보여줄 이유가 없다. 끄기는 사용자가 찾는 기능이지만, 제거는 그렇지 않다.
+ */
+function RemoveButton({
+  asset,
+  onRemove,
+  busy
+}: {
+  asset: Asset
+  onRemove: (asset: Asset) => void
+  busy?: boolean
+}): React.JSX.Element | null {
+  const remove = asset.remove
+  if (!remove || remove.mechanism === null) return null
+
+  return (
+    <button
+      type="button"
+      className="btn btn-sm btn-danger"
+      disabled={busy}
+      onClick={() => onRemove(asset)}
+      title={
+        remove.restorable
+          ? `${remove.target} 을(를) 휴지통으로 보냅니다. Finder 에서 되돌릴 수 있습니다.`
+          : `${remove.target} 을(를) claude plugin uninstall 로 제거합니다. 휴지통을 거치지 않지만 다시 설치할 수 있습니다.`
+      }
+    >
+      {busy ? '…' : '제거'}
     </button>
   )
 }
