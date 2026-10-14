@@ -34,21 +34,7 @@ export function AssetRow({
       </div>
 
       <div className="row-actions">
-        {asset.kind === 'plugin' && onToggle && (
-          <button
-            type="button"
-            className="btn btn-sm"
-            disabled={busy}
-            onClick={() => onToggle(asset, isOff)}
-            title={
-              isOff
-                ? 'settings.json 을 백업한 뒤 이 플러그인을 켭니다'
-                : 'settings.json 을 백업한 뒤 이 플러그인을 끕니다'
-            }
-          >
-            {busy ? '…' : isOff ? '켜기' : '끄기'}
-          </button>
-        )}
+        {onToggle && <ToggleButton asset={asset} onToggle={onToggle} busy={busy} />}
         <button
           type="button"
           className="btn btn-sm"
@@ -67,6 +53,54 @@ export function AssetRow({
         </button>
       </div>
     </div>
+  )
+}
+
+/**
+ * 켜기/끄기 스위치.
+ *
+ * 자산마다 Claude Code 가 제공하는 끄기 방법이 달라서, 스캐너가 붙여준
+ * toggle 정보만 보고 그린다. 끌 수 없는 자산은 사유를 툴팁에 담아
+ * 비활성 상태로 보여준다 — 아예 숨기면 "왜 없지"를 매번 묻게 된다.
+ */
+function ToggleButton({
+  asset,
+  onToggle,
+  busy
+}: {
+  asset: Asset
+  onToggle: (asset: Asset, next: boolean) => void
+  busy?: boolean
+}): React.JSX.Element | null {
+  const toggle = asset.toggle
+  if (!toggle) return null
+
+  if (toggle.mechanism === null) {
+    return (
+      <button type="button" className="btn btn-sm" disabled title={toggle.reason}>
+        끄기 불가
+      </button>
+    )
+  }
+
+  const isOn = toggle.enabled
+  const mechanismLabel =
+    toggle.mechanism === 'skillOverrides'
+      ? 'settings.json 의 skillOverrides'
+      : toggle.mechanism === 'permissionsDeny'
+        ? 'settings.json 의 permissions.deny'
+        : 'settings.json 의 enabledPlugins'
+
+  return (
+    <button
+      type="button"
+      className={`btn btn-sm${isOn ? '' : ' btn-on'}`}
+      disabled={busy}
+      onClick={() => onToggle(asset, !isOn)}
+      title={`${mechanismLabel} 를 백업 후 수정합니다 (Claude Code 재시작 후 적용)`}
+    >
+      {busy ? '…' : isOn ? '끄기' : '켜기'}
+    </button>
   )
 }
 

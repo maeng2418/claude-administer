@@ -9,6 +9,33 @@ export type Scope = 'user' | 'project' | 'plugin'
 /** 좌측 사이드바 탭과 1:1 대응되는 자산 종류. */
 export type AssetKind = 'skill' | 'agent' | 'command' | 'hook' | 'plugin' | 'mcp'
 
+/**
+ * 자산을 끄는 방법. settings.json 의 어느 키를 쓰는지가 종류마다 다르다.
+ *
+ *  - skillOverrides: 전역·프로젝트 스킬 — settings.json 의 skillOverrides[name] = "off"
+ *  - permissionsDeny: 에이전트 — permissions.deny 에 Agent(name) 추가
+ *  - enabledPlugins: 플러그인 — enabledPlugins[id] = false
+ */
+export type ToggleMechanism = 'skillOverrides' | 'permissionsDeny' | 'enabledPlugins'
+
+/** 자산 하나의 토글 가능 여부. */
+export interface ToggleCapability {
+  /** 끌 수 있으면 어떤 방법으로. 끌 수 없으면 null. */
+  mechanism: ToggleMechanism | null
+  /** 지금 켜져 있는지. */
+  enabled: boolean
+  /** mechanism 이 null 일 때 왜 끌 수 없는지. UI 툴팁에 쓴다. */
+  reason?: string
+}
+
+/** 토글 요청. renderer 가 보내는 값이므로 main 에서 다시 검사한다. */
+export interface ToggleRequest {
+  mechanism: ToggleMechanism
+  /** skillOverrides / permissionsDeny 는 자산 이름, enabledPlugins 는 플러그인 ID. */
+  key: string
+  enabled: boolean
+}
+
 /** 모든 자산이 공유하는 필드. */
 export interface AssetBase {
   kind: AssetKind
@@ -18,8 +45,15 @@ export interface AssetBase {
   /** 파일/디렉토리 절대 경로. "에디터로 열기" 대상. */
   path: string
   description?: string
-  /** 이 자산이 비활성 상태인지 (현재는 플러그인에만 해당). */
+  /** 이 자산이 비활성 상태인지. */
   disabled?: boolean
+  /**
+   * 이 자산을 앱에서 끌 수 있는지, 끌 수 없으면 왜인지.
+   *
+   * 자산 종류마다 Claude Code 가 제공하는 끄기 방법이 다르다. 전용 키가 있는
+   * 것만 토글을 노출하고, 나머지는 이유를 붙여 비활성으로 보여준다.
+   */
+  toggle?: ToggleCapability
   /**
    * 같은 kind·같은 name 이 다른 scope 에도 존재할 때 그 scope 목록.
    * 비어있지 않으면 UI 에 충돌 배지를 띄운다.
@@ -94,6 +128,24 @@ export type Asset =
   | PluginAsset
   | McpAsset
 
+/** 프로젝트를 어떻게 알게 됐는지. 목록에서 출처를 구분해 보여준다. */
+export type ProjectOrigin = 'discovered' | 'added'
+
+/** 스캔 대상이 될 수 있는 프로젝트 하나. */
+export interface ProjectRef {
+  /** 프로젝트 루트 절대 경로 (.claude 의 부모). */
+  path: string
+  /** 목록에 보여줄 이름. 보통 디렉토리명. */
+  name: string
+  origin: ProjectOrigin
+  /** 이 프로젝트가 .claude/ 를 가지고 있는지. */
+  hasClaudeDir: boolean
+  /** 프로젝트 루트에 .mcp.json 이 있는지. */
+  hasMcpConfig: boolean
+  /** Claude Code 세션 기록상 마지막 사용 시각. 발견된 프로젝트에만 있다. */
+  lastUsedAt?: string
+}
+
 /** 스캔 중 생긴 문제. 스캔 전체를 실패시키지 않고 UI 에 모아 보여준다. */
 export interface ScanIssue {
   path: string
@@ -107,6 +159,8 @@ export interface Inventory {
   userRoot: string
   /** 스캔한 프로젝트의 .claude 경로. 프로젝트가 없으면 null. */
   projectRoot: string | null
+  /** 스캔 대상이던 프로젝트. 전역만 스캔했으면 null. */
+  project: ProjectRef | null
   skills: SkillAsset[]
   agents: AgentAsset[]
   commands: CommandAsset[]
@@ -116,20 +170,38 @@ export interface Inventory {
   issues: ScanIssue[]
 }
 
-/** 플러그인 토글 결과. 백업 경로를 함께 돌려줘 UI 에서 되돌릴 근거를 보여준다. */
+/** 토글 결과. 백업 경로를 함께 돌려줘 UI 에서 되돌릴 근거를 보여준다. */
 export interface ToggleResult {
   ok: boolean
-  pluginId: string
+  mechanism: ToggleMechanism
+  /** 토글한 대상 키 (스킬·에이전트 이름 또는 플러그인 ID). */
+  key: string
   enabled: boolean
   /** 수정 직전에 만든 settings.json 백업 경로. */
   backupPath?: string
   error?: string
 }
 
+/** 프로젝트 목록 조회 결과. 발견 과정의 문제도 함께 돌려준다. */
+export interface ProjectListResult {
+  projects: ProjectRef[]
+  /** 마지막으로 선택했던 프로젝트 경로. 없으면 null. */
+  lastSelected: string | null
+  issues: ScanIssue[]
+}
+
 /** renderer 가 preload 를 통해 쓸 수 있는 API. window.api 로 노출된다. */
 export interface AdminApi {
-  scan(): Promise<Inventory>
-  togglePlugin(pluginId: string, enabled: boolean): Promise<ToggleResult>
+  /** @param projectPath 스캔할 프로젝트 루트. 생략하면 전역 자산만 읽는다. */
+  scan(projectPath?: string | null): Promise<Inventory>
+  /** 알고 있는 프로젝트 전체 목록 (발견 + 직접 추가). */
+  listProjects(): Promise<ProjectListResult>
+  /** 폴더 선택 다이얼로그를 띄워 프로젝트를 추가한다. 취소하면 added 가 null. */
+  addProject(): Promise<{ added: ProjectRef | null; error?: string }>
+  /** 직접 추가한 프로젝트를 목록에서 뺀다. 발견된 항목은 지울 수 없다. */
+  removeProject(path: string): Promise<{ ok: boolean; error?: string }>
+  /** 자산을 켜거나 끈다. 어떤 키를 쓸지는 mechanism 이 정한다. */
+  toggleAsset(request: ToggleRequest): Promise<ToggleResult>
   openPath(path: string): Promise<{ ok: boolean; error?: string }>
   revealPath(path: string): Promise<{ ok: boolean; error?: string }>
 }

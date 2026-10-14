@@ -89,6 +89,61 @@ body {
   margin-top: 2px;
 }
 
+/* ---- 프로젝트 선택기 ---- */
+.picker {
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.picker-label {
+  color: var(--text-faint);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.picker-select {
+  width: 100%;
+  padding: 4px 6px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+
+.picker-meta {
+  color: var(--text-faint);
+  font-size: 10px;
+  /* 긴 경로가 사이드바를 밀어내지 않도록 앞쪽을 자른다. */
+  direction: rtl;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.picker-warn {
+  color: var(--warn, #d98c3a);
+  font-size: 10px;
+}
+
+.picker-actions {
+  display: flex;
+  gap: 6px;
+}
+
+/* 꺼진 자산의 '켜기' 버튼을 눈에 띄게 한다. */
+.btn-on {
+  border-color: var(--accent, #4a7dd8);
+  color: var(--accent, #4a7dd8);
+}
+
 .nav {
   padding: 6px;
   overflow-y: auto;

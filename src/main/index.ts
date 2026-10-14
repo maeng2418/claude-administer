@@ -1,8 +1,16 @@
-import { BrowserWindow, app, ipcMain, shell } from 'electron'
+import { BrowserWindow, app, dialog, ipcMain, shell } from 'electron'
 import { isAbsolute, join, resolve, sep } from 'node:path'
-import { scanInventory } from './scanner.js'
-import { togglePlugin } from './settings.js'
-import type { Inventory, ToggleResult } from '../shared/types.js'
+import { scanInventory, userClaudeRoot } from './scanner.js'
+import { ProjectRegistry, storePathFor } from './projects.js'
+import { toggleAsset } from './settings.js'
+import type {
+  Inventory,
+  ProjectListResult,
+  ProjectRef,
+  ToggleMechanism,
+  ToggleRequest,
+  ToggleResult
+} from '../shared/types.js'
 
 /**
  * Electron main 프로세스.
@@ -12,9 +20,18 @@ import type { Inventory, ToggleResult } from '../shared/types.js'
  * 핸들러가 받는 인자는 신뢰하지 않고 검사한다.
  */
 
-/** 스캔 대상 프로젝트. 앱을 띄운 디렉토리를 프로젝트로 본다. */
-function projectDir(): string {
-  return process.cwd()
+/**
+ * 프로젝트 레지스트리. 앱 전용 저장 파일을 쓴다.
+ *
+ * app.getPath('userData') 는 whenReady 이후에만 안정적이므로 지연 생성한다.
+ */
+let registry: ProjectRegistry | null = null
+
+function projects(): ProjectRegistry {
+  if (!registry) {
+    registry = new ProjectRegistry(storePathFor(app.getPath('userData')))
+  }
+  return registry
 }
 
 function createWindow(): void {
@@ -56,62 +73,135 @@ function createWindow(): void {
  * 경로 인자가 우리가 다루는 범위 안인지 확인한다.
  *
  * renderer 가 임의 경로를 열도록 두면 IPC 가 파일 열기 우회로가 된다.
- * 사용자 홈의 .claude 와 프로젝트 디렉토리 아래만 허용한다.
+ * 허용 범위는 두 가지뿐이다:
+ *  - 사용자 홈의 .claude
+ *  - 레지스트리가 알고 있는 프로젝트 (발견된 것 + 직접 추가한 것)
+ *
+ * 프로젝트 목록이 런타임에 늘어나므로 허용 목록도 매번 다시 읽는다.
+ * 문자열 접두사 비교 전에 반드시 resolve() 로 정규화한다 — 하지 않으면
+ * `~/.claude/../.ssh/id_rsa` 같은 경로가 검사를 통과한다.
  */
-function isAllowedPath(target: unknown): target is string {
+async function isAllowedPath(target: unknown): Promise<boolean> {
   if (typeof target !== 'string' || target === '') return false
+  if (!isAbsolute(target)) return false
 
-  // 반드시 정규화 먼저. 하지 않으면 `~/.claude/../.ssh/id_rsa` 처럼
-  // `..` 로 허용 범위를 빠져나가는 경로가 문자열 접두사 검사를 통과한다.
   const normalized = resolve(target)
-  if (normalized !== target && !isAbsolute(target)) return false
+  const roots = [resolve(userClaudeRoot()), ...(await projects().allowedRoots())]
 
-  const allowedRoots = [
-    resolve(join(app.getPath('home'), '.claude')),
-    resolve(projectDir())
-  ]
   // 경로 구분자까지 비교해 `/foo/.claude-evil` 이 `/foo/.claude` 로 통과하지 않게 한다.
-  return allowedRoots.some(
+  return roots.some(
     (root) => normalized === root || normalized.startsWith(`${root}${sep}`)
   )
 }
 
+/** 토글 요청이 올바른 모양인지 검사한다. renderer 가 보낸 값은 신뢰하지 않는다. */
+const TOGGLE_MECHANISMS: ToggleMechanism[] = [
+  'skillOverrides',
+  'permissionsDeny',
+  'enabledPlugins'
+]
+
+function parseToggleRequest(raw: unknown): ToggleRequest | string {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return '토글 요청 형식이 올바르지 않습니다.'
+  }
+  const value = raw as Record<string, unknown>
+  const mechanism = value['mechanism']
+  if (typeof mechanism !== 'string' || !TOGGLE_MECHANISMS.includes(mechanism as ToggleMechanism)) {
+    return '지원하지 않는 토글 방식입니다.'
+  }
+  const key = value['key']
+  if (typeof key !== 'string' || key === '') {
+    return '토글 대상 이름이 올바르지 않습니다.'
+  }
+  const enabled = value['enabled']
+  if (typeof enabled !== 'boolean') {
+    return '활성 상태 값이 올바르지 않습니다.'
+  }
+  return { mechanism: mechanism as ToggleMechanism, key, enabled }
+}
+
 function registerHandlers(): void {
-  ipcMain.handle('admin:scan', async (): Promise<Inventory> => {
-    return scanInventory(projectDir())
+  ipcMain.handle(
+    'admin:scan',
+    async (_event, projectPath: unknown): Promise<Inventory> => {
+      // 알고 있는 프로젝트만 스캔한다. 모르는 경로는 조용히 전역 스캔으로 떨어진다.
+      const path = typeof projectPath === 'string' && projectPath !== '' ? projectPath : null
+      const project = await projects().resolveForScan(path)
+      if (project) await projects().rememberSelection(project.path)
+      else if (path === null) await projects().rememberSelection(null)
+      return scanInventory(project)
+    }
+  )
+
+  ipcMain.handle('admin:listProjects', async (): Promise<ProjectListResult> => {
+    const { projects: list, lastSelected, issues } = await projects().list()
+    return { projects: list, lastSelected, issues }
   })
 
   ipcMain.handle(
-    'admin:togglePlugin',
-    async (_event, pluginId: unknown, enabled: unknown): Promise<ToggleResult> => {
-      if (typeof pluginId !== 'string' || pluginId === '') {
+    'admin:addProject',
+    async (): Promise<{ added: ProjectRef | null; error?: string }> => {
+      const result = await dialog.showOpenDialog({
+        title: '프로젝트 폴더 선택',
+        properties: ['openDirectory', 'createDirectory'],
+        message: 'Claude 자산(.claude/ 또는 .mcp.json)이 있는 프로젝트 폴더를 고르세요.'
+      })
+      const picked = result.filePaths[0]
+      if (result.canceled || !picked) return { added: null }
+      try {
+        const added = await projects().add(picked)
+        return { added }
+      } catch (err) {
         return {
-          ok: false,
-          pluginId: String(pluginId),
-          enabled: Boolean(enabled),
-          error: '플러그인 ID 가 올바르지 않습니다.'
+          added: null,
+          error: err instanceof Error ? err.message : String(err)
         }
       }
-      if (typeof enabled !== 'boolean') {
+    }
+  )
+
+  ipcMain.handle(
+    'admin:removeProject',
+    async (_event, target: unknown): Promise<{ ok: boolean; error?: string }> => {
+      if (typeof target !== 'string' || target === '') {
+        return { ok: false, error: '경로가 올바르지 않습니다.' }
+      }
+      try {
+        await projects().remove(target)
+        return { ok: true }
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'admin:toggleAsset',
+    async (_event, raw: unknown): Promise<ToggleResult> => {
+      const parsed = parseToggleRequest(raw)
+      if (typeof parsed === 'string') {
         return {
           ok: false,
-          pluginId,
+          // 형식이 깨진 요청이라 mechanism 을 신뢰할 수 없다. 플러그인으로 보고한다.
+          mechanism: 'enabledPlugins',
+          key: '',
           enabled: false,
-          error: '활성 상태 값이 올바르지 않습니다.'
+          error: parsed
         }
       }
-      return togglePlugin(pluginId, enabled)
+      return toggleAsset(parsed)
     }
   )
 
   ipcMain.handle(
     'admin:openPath',
     async (_event, target: unknown): Promise<{ ok: boolean; error?: string }> => {
-      if (!isAllowedPath(target)) {
+      if (!(await isAllowedPath(target))) {
         return { ok: false, error: '허용되지 않은 경로입니다.' }
       }
       // openPath 는 실패 시 예외가 아니라 사유 문자열을 돌려준다.
-      const failure = await shell.openPath(target)
+      const failure = await shell.openPath(target as string)
       return failure === '' ? { ok: true } : { ok: false, error: failure }
     }
   )
@@ -119,10 +209,10 @@ function registerHandlers(): void {
   ipcMain.handle(
     'admin:revealPath',
     async (_event, target: unknown): Promise<{ ok: boolean; error?: string }> => {
-      if (!isAllowedPath(target)) {
+      if (!(await isAllowedPath(target))) {
         return { ok: false, error: '허용되지 않은 경로입니다.' }
       }
-      shell.showItemInFolder(target)
+      shell.showItemInFolder(target as string)
       return { ok: true }
     }
   )

@@ -10,9 +10,11 @@ import type {
   Inventory,
   McpAsset,
   PluginAsset,
+  ProjectRef,
   ScanIssue,
   Scope,
-  SkillAsset
+  SkillAsset,
+  ToggleCapability
 } from '../shared/types.js'
 
 /**
@@ -93,6 +95,73 @@ async function readMarkdownMeta(
 }
 
 // ---------------------------------------------------------------------------
+// 토글 상태
+// ---------------------------------------------------------------------------
+
+/**
+ * settings.json 에서 끄기 설정을 읽어둔 것.
+ *
+ * 자산마다 settings.json 을 다시 파싱하지 않도록 한 번 읽어 넘긴다.
+ */
+interface ToggleState {
+  /** skillOverrides 에서 "off" 인 스킬 이름. */
+  skillsOff: Set<string>
+  /** permissions.deny 의 Agent(...) 에서 뽑은 에이전트 이름. */
+  agentsDenied: Set<string>
+}
+
+/** 비어 있는 토글 상태. settings.json 을 못 읽었을 때 쓴다. */
+const NO_TOGGLES: ToggleState = {
+  skillsOff: new Set(),
+  agentsDenied: new Set()
+}
+
+/** permissions.deny 항목에서 Agent(name) 의 name 을 뽑는다. */
+const AGENT_DENY_PATTERN = /^Agent\(([^)]+)\)$/
+
+/** settings.json 에서 끄기 설정을 모은다. */
+function readToggleState(settings: Record<string, unknown> | null): ToggleState {
+  if (!settings) return NO_TOGGLES
+
+  const skillsOff = new Set<string>()
+  const overrides = settings['skillOverrides']
+  if (overrides && typeof overrides === 'object' && !Array.isArray(overrides)) {
+    for (const [name, value] of Object.entries(overrides as Record<string, unknown>)) {
+      if (value === 'off') skillsOff.add(name)
+    }
+  }
+
+  const agentsDenied = new Set<string>()
+  const permissions = settings['permissions']
+  if (permissions && typeof permissions === 'object' && !Array.isArray(permissions)) {
+    const deny = (permissions as Record<string, unknown>)['deny']
+    if (Array.isArray(deny)) {
+      for (const item of deny) {
+        if (typeof item !== 'string') continue
+        const match = AGENT_DENY_PATTERN.exec(item.trim())
+        if (match?.[1]) agentsDenied.add(match[1].trim())
+      }
+    }
+  }
+
+  return { skillsOff, agentsDenied }
+}
+
+/** 끌 수 없는 자산에 붙일 사유. UI 툴팁에 그대로 나간다. */
+const NO_TOGGLE_REASONS = {
+  pluginSkill: '플러그인이 제공하는 스킬은 skillOverrides 가 적용되지 않습니다. 플러그인 탭에서 플러그인을 끄세요.',
+  pluginAsset: '플러그인이 제공하는 자산입니다. 플러그인 탭에서 플러그인을 끄세요.',
+  command: 'Claude Code 에 커맨드를 끄는 전용 설정이 없습니다. 파일을 옮기거나 지워야 합니다.',
+  hook: '훅은 settings.json 의 hooks 항목을 직접 지워야 끌 수 있습니다. 편집기로 열어 수정하세요.',
+  mcp: 'MCP 서버는 mcp.json 의 항목을 직접 지워야 끌 수 있습니다. 편집기로 열어 수정하세요.'
+} as const
+
+/** 끌 수 없음을 나타내는 ToggleCapability. */
+function cannotToggle(reason: string): ToggleCapability {
+  return { mechanism: null, enabled: true, reason }
+}
+
+// ---------------------------------------------------------------------------
 // 스킬
 // ---------------------------------------------------------------------------
 
@@ -106,6 +175,7 @@ async function scanSkills(
   root: string,
   scope: Scope,
   issues: IssueLog,
+  toggles: ToggleState,
   sourcePlugin?: string
 ): Promise<SkillAsset[]> {
   const dir = join(root, 'skills')
@@ -121,15 +191,22 @@ async function scanSkills(
       continue
     }
     const meta = await readMarkdownMeta(skillMd, issues)
+    // 호출 식별자는 디렉토리명이지만, skillOverrides 는 frontmatter name 을 키로 쓴다.
+    const name = readString(meta, 'name') ?? entry.name
+    const off = toggles.skillsOff.has(name)
     out.push({
       kind: 'skill',
-      // frontmatter name 이 디렉토리명과 다를 수 있으나, 호출 식별자는 디렉토리명이다.
-      name: readString(meta, 'name') ?? entry.name,
+      name,
       scope,
       path: join(dir, entry.name),
       description: readString(meta, 'description'),
       trigger: readString(meta, 'trigger'),
-      ...(sourcePlugin ? { sourcePlugin } : {})
+      ...(sourcePlugin ? { sourcePlugin } : {}),
+      // 플러그인이 제공하는 스킬은 skillOverrides 로 끌 수 없다(공식 문서 확인).
+      toggle: sourcePlugin
+        ? cannotToggle(NO_TOGGLE_REASONS.pluginSkill)
+        : { mechanism: 'skillOverrides', enabled: !off },
+      ...(sourcePlugin ? {} : { disabled: off })
     })
   }
   return out
@@ -143,7 +220,8 @@ async function scanSkills(
 async function scanAgents(
   root: string,
   scope: Scope,
-  issues: IssueLog
+  issues: IssueLog,
+  toggles: ToggleState
 ): Promise<AgentAsset[]> {
   const dir = join(root, 'agents')
   const out: AgentAsset[] = []
@@ -158,14 +236,19 @@ async function scanAgents(
       }
       if (!entry.name.endsWith('.md')) continue
       const meta = await readMarkdownMeta(full, issues)
+      const name = readString(meta, 'name') ?? basename(entry.name, '.md')
+      const denied = toggles.agentsDenied.has(name)
       out.push({
         kind: 'agent',
-        name: readString(meta, 'name') ?? basename(entry.name, '.md'),
+        name,
         scope,
         path: full,
         description: readString(meta, 'description'),
         tools: readStringList(meta, 'tools'),
-        model: readString(meta, 'model')
+        model: readString(meta, 'model'),
+        // permissions.deny 의 Agent(name) 은 플러그인 제공 에이전트에도 적용된다.
+        toggle: { mechanism: 'permissionsDeny', enabled: !denied },
+        disabled: denied
       })
     }
   }
@@ -212,7 +295,10 @@ async function scanCommands(
         path: full,
         description: readString(meta, 'description'),
         invocation: `/${name}`,
-        ...(sourcePlugin ? { sourcePlugin } : {})
+        ...(sourcePlugin ? { sourcePlugin } : {}),
+        toggle: cannotToggle(
+          sourcePlugin ? NO_TOGGLE_REASONS.pluginAsset : NO_TOGGLE_REASONS.command
+        )
       })
     }
   }
@@ -273,7 +359,8 @@ function extractHooks(
           timeout: typeof hook['timeout'] === 'number' ? hook['timeout'] : undefined,
           async: typeof hook['async'] === 'boolean' ? hook['async'] : undefined,
           description: summarizeCommand(command),
-          index: index++
+          index: index++,
+          toggle: cannotToggle(NO_TOGGLE_REASONS.hook)
         })
       }
     }
@@ -334,7 +421,8 @@ function extractMcp(
       args,
       description: command
         ? summarizeCommand([command, ...(args ?? [])].join(' '))
-        : url
+        : url,
+      toggle: cannotToggle(NO_TOGGLE_REASONS.mcp)
     })
   }
   return out
@@ -357,8 +445,14 @@ interface RawInstalledPlugins {
 async function scanPlugins(
   userRoot: string,
   settings: Record<string, unknown> | null,
-  issues: IssueLog
-): Promise<{ plugins: PluginAsset[]; skills: SkillAsset[]; commands: CommandAsset[] }> {
+  issues: IssueLog,
+  toggles: ToggleState
+): Promise<{
+  plugins: PluginAsset[]
+  skills: SkillAsset[]
+  commands: CommandAsset[]
+  agents: AgentAsset[]
+}> {
   const registryPath = join(userRoot, 'plugins', 'installed_plugins.json')
   const registry = await readJson<RawInstalledPlugins>(registryPath, issues)
 
@@ -370,9 +464,10 @@ async function scanPlugins(
   const plugins: PluginAsset[] = []
   const skills: SkillAsset[] = []
   const commands: CommandAsset[] = []
+  const agents: AgentAsset[] = []
 
   if (!registry?.plugins) {
-    return { plugins, skills, commands }
+    return { plugins, skills, commands, agents }
   }
 
   for (const [id, installs] of Object.entries(registry.plugins)) {
@@ -384,13 +479,14 @@ async function scanPlugins(
     const marketplace = atIndex > 0 ? id.slice(atIndex + 1) : 'unknown'
 
     const provided = await Promise.all([
-      scanSkills(install.installPath, 'plugin', issues, id),
+      scanSkills(install.installPath, 'plugin', issues, toggles, id),
       scanCommands(install.installPath, 'plugin', issues, id),
-      scanAgents(install.installPath, 'plugin', issues)
+      scanAgents(install.installPath, 'plugin', issues, toggles)
     ])
     const [pSkills, pCommands, pAgents] = provided
     skills.push(...pSkills)
     commands.push(...pCommands)
+    agents.push(...pAgents)
 
     const enabled = enabledMap[id] !== false
 
@@ -409,11 +505,12 @@ async function scanPlugins(
         skills: pSkills.length,
         commands: pCommands.length,
         agents: pAgents.length
-      }
+      },
+      toggle: { mechanism: 'enabledPlugins', enabled }
     })
   }
 
-  return { plugins, skills, commands }
+  return { plugins, skills, commands, agents }
 }
 
 // ---------------------------------------------------------------------------
@@ -457,23 +554,26 @@ export function userClaudeRoot(): string {
 /**
  * 전체 스캔을 수행한다.
  *
- * @param projectDir 프로젝트 루트(.claude 의 부모). 없으면 사용자 자산만 스캔한다.
+ * @param project 스캔할 프로젝트. null 이면 전역 자산만 스캔한다.
  */
-export async function scanInventory(projectDir?: string): Promise<Inventory> {
+export async function scanInventory(project?: ProjectRef | null): Promise<Inventory> {
   const issues = new IssueLog()
   const userRoot = userClaudeRoot()
-  const projectRoot = projectDir ? join(resolve(projectDir), '.claude') : null
+  const projectDir = project ? resolve(project.path) : null
+  const projectRoot = projectDir ? join(projectDir, '.claude') : null
 
   const userSettings = await readJson<Record<string, unknown>>(
     join(userRoot, 'settings.json'),
     issues
   )
+  // 끄기 설정은 전역 settings.json 한 곳에서만 읽는다 — 쓰기도 그곳에만 한다.
+  const toggles = readToggleState(userSettings)
 
   const [userSkills, userAgents, userCommands, pluginResult] = await Promise.all([
-    scanSkills(userRoot, 'user', issues),
-    scanAgents(userRoot, 'user', issues),
+    scanSkills(userRoot, 'user', issues, toggles),
+    scanAgents(userRoot, 'user', issues, toggles),
     scanCommands(userRoot, 'user', issues),
-    scanPlugins(userRoot, userSettings, issues)
+    scanPlugins(userRoot, userSettings, issues, toggles)
   ])
 
   const userMcp = extractMcp(
@@ -495,11 +595,11 @@ export async function scanInventory(projectDir?: string): Promise<Inventory> {
       projectSettingsPath,
       issues
     )
-    const mcpPath = join(resolve(projectDir), '.mcp.json')
+    const mcpPath = join(projectDir, '.mcp.json')
 
     ;[projectSkills, projectAgents, projectCommands] = await Promise.all([
-      scanSkills(projectRoot, 'project', issues),
-      scanAgents(projectRoot, 'project', issues),
+      scanSkills(projectRoot, 'project', issues, toggles),
+      scanAgents(projectRoot, 'project', issues, toggles),
       scanCommands(projectRoot, 'project', issues)
     ])
     projectHooks = extractHooks(projectSettings, 'project', projectSettingsPath)
@@ -514,8 +614,10 @@ export async function scanInventory(projectDir?: string): Promise<Inventory> {
     scannedAt: new Date().toISOString(),
     userRoot,
     projectRoot,
+    project: project ?? null,
     skills: markConflicts([...projectSkills, ...userSkills, ...pluginResult.skills]),
-    agents: markConflicts([...projectAgents, ...userAgents]),
+    // 플러그인이 제공하는 에이전트도 포함한다 — 이전에는 개수만 세고 버렸다.
+    agents: markConflicts([...projectAgents, ...userAgents, ...pluginResult.agents]),
     commands: markConflicts([
       ...projectCommands,
       ...userCommands,
