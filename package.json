@@ -32,5 +32,28 @@
   },
   "allowScripts": {
     "electron@44.7.2": true
+  },
+  "build": {
+    "appId": "local.claude-administer",
+    "productName": "Claude Administer",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        {
+          "target": "dir",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "identity": null
+    }
   }
 }

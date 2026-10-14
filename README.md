@@ -156,7 +156,7 @@ npm run dev
 ```bash
 npm run typecheck   # main + renderer 타입 검사
 npm run build       # out/ 에 번들 생성
-npm run pack        # .app 생성 (서명 없음)
+npm run pack        # release/mac-arm64/ 에 .app 생성 (서명 없음)
 ```
 
 ## 안전장치
@@ -231,4 +231,5 @@ src/
 - 마켓플레이스는 보기만 된다. 편집은 `claude plugin marketplace` 로
 - 플러그인 설정값(`pluginConfigs`)은 아직 화면에 없다. Jira 계정 같은 자격 성격
   값이 들어있어, 넣을 때는 기본 가림 처리가 필요하다
-- 앱 서명이 없어 `npm run pack` 산출물은 이 기계에서만 실행된다
+- 앱 서명이 없어 `npm run pack` 산출물(`release/mac-arm64/Claude Administer.app`,
+  304MB)은 이 기계에서만 실행된다. 다른 맥으로 옮기면 Gatekeeper 가 막는다

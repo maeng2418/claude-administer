@@ -229,6 +229,7 @@ node_modules/
 .tscache/
 .next/
 out/
+release/
 
 # ===========================================
 # Build Tools & Frameworks
