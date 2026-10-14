@@ -2,6 +2,7 @@ import { readFile, readdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 import { parseFrontmatter, readString, readStringList } from './frontmatter.js'
+import { collectMarketplaces, collectPermissions } from './permissions.js'
 import type {
   AgentAsset,
   Asset,
@@ -630,6 +631,53 @@ export async function scanInventory(project?: ProjectRef | null): Promise<Invent
   )
   const userHooks = extractHooks(userSettings, 'user', join(userRoot, 'settings.json'))
 
+  // 권한 규칙과 마켓플레이스. 레이어가 셋이고(전역 · 프로젝트 · 프로젝트 로컬)
+  // 어느 파일에서 온 규칙인지가 핵심 정보라 합치지 않고 따로 읽는다.
+  const userSettingsPath = join(userRoot, 'settings.json')
+  const projectSettingsFile = projectRoot ? join(projectRoot, 'settings.json') : null
+  const projectLocalFile = projectRoot ? join(projectRoot, 'settings.local.json') : null
+
+  const [projectSettingsForPerms, projectLocalForPerms] = await Promise.all([
+    projectSettingsFile
+      ? readJson<Record<string, unknown>>(projectSettingsFile, issues)
+      : Promise.resolve(null),
+    projectLocalFile
+      ? readJson<Record<string, unknown>>(projectLocalFile, issues)
+      : Promise.resolve(null)
+  ])
+
+  const { assets: permissionAssets, summary: permissionSummary } = collectPermissions([
+    { layer: 'user', path: userSettingsPath, settings: userSettings },
+    ...(projectSettingsFile
+      ? ([
+          {
+            layer: 'project' as const,
+            path: projectSettingsFile,
+            settings: projectSettingsForPerms
+          }
+        ] as const)
+      : []),
+    ...(projectLocalFile
+      ? ([
+          {
+            layer: 'local' as const,
+            path: projectLocalFile,
+            settings: projectLocalForPerms
+          }
+        ] as const)
+      : [])
+  ])
+
+  const registryPath = join(userRoot, 'plugins', 'known_marketplaces.json')
+  const marketplaces = collectMarketplaces(
+    await readJson<Record<string, unknown>>(registryPath, issues),
+    userSettings && typeof userSettings['extraKnownMarketplaces'] === 'object'
+      ? (userSettings['extraKnownMarketplaces'] as Record<string, unknown>)
+      : null,
+    pluginResult.plugins.map((p) => p.id),
+    registryPath
+  )
+
   let projectSkills: SkillAsset[] = []
   let projectAgents: AgentAsset[] = []
   let projectCommands: CommandAsset[] = []
@@ -674,6 +722,9 @@ export async function scanInventory(project?: ProjectRef | null): Promise<Invent
     hooks: [...projectHooks, ...userHooks],
     plugins: pluginResult.plugins,
     mcp: markConflicts([...projectMcp, ...userMcp]),
+    permissions: permissionAssets,
+    marketplaces,
+    permissionSummary,
     issues: issues.items
   }
 }

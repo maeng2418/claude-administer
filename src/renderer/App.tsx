@@ -10,7 +10,9 @@ const TABS: { kind: AssetKind; label: string; field: keyof Inventory }[] = [
   { kind: 'agent', label: '에이전트', field: 'agents' },
   { kind: 'hook', label: '훅', field: 'hooks' },
   { kind: 'plugin', label: '플러그인', field: 'plugins' },
-  { kind: 'mcp', label: 'MCP 서버', field: 'mcp' }
+  { kind: 'mcp', label: 'MCP 서버', field: 'mcp' },
+  { kind: 'permission', label: '권한 규칙', field: 'permissions' },
+  { kind: 'marketplace', label: '마켓플레이스', field: 'marketplaces' }
 ]
 
 /** 검색어가 자산의 어느 필드든 걸리는지 본다. */
@@ -25,7 +27,11 @@ function matches(asset: Asset, query: string): boolean {
     asset.kind === 'skill' ? (asset.trigger ?? '') : '',
     asset.kind === 'hook' ? `${asset.event} ${asset.command}` : '',
     asset.kind === 'plugin' ? `${asset.id} ${asset.marketplace}` : '',
-    asset.kind === 'mcp' ? `${asset.transport} ${asset.command ?? ''}` : ''
+    asset.kind === 'mcp' ? `${asset.transport} ${asset.command ?? ''}` : '',
+    asset.kind === 'permission' ? `${asset.tool} ${asset.rule} ${asset.layer}` : '',
+    asset.kind === 'marketplace'
+      ? `${asset.source} ${asset.origin ?? ''} ${asset.installLocation ?? ''}`
+      : ''
   ]
   return haystack.join(' ').toLowerCase().includes(q)
 }
@@ -148,6 +154,13 @@ export function App(): React.JSX.Element {
     setTab('plugin')
     setQuery(pluginId)
     setNotice(`플러그인 "${pluginId}" 로 이동했습니다. 끄면 이 플러그인이 제공하는 자산도 함께 꺼집니다.`)
+  }, [])
+
+  /** 마켓플레이스에서 그 출처의 플러그인으로. 플러그인 ID 가 `<이름>@<출처>` 라 출처로 검색된다. */
+  const handleGoToMarketplacePlugins = useCallback((marketplace: string) => {
+    setTab('plugin')
+    setQuery(`@${marketplace}`)
+    setNotice(`"${marketplace}" 출처의 플러그인만 보여줍니다.`)
   }, [])
 
   const handleOpen = useCallback(async (path: string) => {
@@ -329,6 +342,18 @@ export function App(): React.JSX.Element {
             </details>
           )}
 
+          {tab === 'permission' && inventory && (
+            <PermissionOverview summary={inventory.permissionSummary} />
+          )}
+
+          {tab === 'marketplace' && inventory && (
+            <div className="banner">
+              레지스트리 {inventory.marketplaces.length}곳 · 설치된 플러그인{' '}
+              {inventory.plugins.length}개. 플러그인 0개인 출처는 등록만 되어 있고 쓰이지
+              않습니다.
+            </div>
+          )}
+
           {loading && !inventory && <div className="state">자산을 읽고 있습니다…</div>}
 
           {!loading && rows.length === 0 && (
@@ -347,12 +372,77 @@ export function App(): React.JSX.Element {
             onReveal={handleReveal}
             onToggle={handleToggle}
             onGoToPlugin={handleGoToPlugin}
+            onGoToMarketplacePlugins={handleGoToMarketplacePlugins}
             onRemove={handleRemove}
             busyKey={busyKey}
             rowKeyFor={rowKeyFor}
           />
         </div>
       </main>
+    </div>
+  )
+}
+
+/**
+ * 권한 탭 머리 요약.
+ *
+ * 규칙 목록만으로는 알 수 없는 것들을 모아 보여준다 — 레이어별 규칙 수,
+ * 권한 요청 기본 동작, 프로젝트 밖인데 접근이 허용된 디렉토리.
+ * additionalDirectories 는 특히 눈에 보여야 한다. 프로젝트 경계를 넘는
+ * 접근 허용이라 무엇이 열려 있는지 모르면 안 된다.
+ */
+function PermissionOverview({
+  summary
+}: {
+  summary: import('../shared/types.js').PermissionSummary
+}): React.JSX.Element {
+  const layerLabel = (layer: string): string =>
+    layer === 'user' ? '전역' : layer === 'project' ? '프로젝트' : '프로젝트 로컬'
+
+  return (
+    <div className="overview">
+      <div className="overview-row">
+        <span className="overview-label">레이어별 규칙</span>
+        <span className="overview-value">
+          {summary.counts.length === 0
+            ? '없음'
+            : summary.counts.map((c) => (
+                <span className="chip" key={c.layer} title={c.path}>
+                  {layerLabel(c.layer)} 허용 {c.allow}
+                  {c.ask > 0 ? ` · 확인 ${c.ask}` : ''}
+                  {c.deny > 0 ? ` · 거부 ${c.deny}` : ''}
+                </span>
+              ))}
+        </span>
+      </div>
+
+      <div className="overview-row">
+        <span className="overview-label">기본 동작</span>
+        <span className="overview-value">
+          {summary.defaultMode.length === 0
+            ? '설정 없음'
+            : summary.defaultMode.map((m) => (
+                <span className="chip" key={m.layer}>
+                  {layerLabel(m.layer)} {m.value}
+                </span>
+              ))}
+        </span>
+      </div>
+
+      <div className="overview-row">
+        <span className="overview-label">추가 허용 디렉토리</span>
+        <span className="overview-value">
+          {summary.additionalDirectories.length === 0 ? (
+            '없음'
+          ) : (
+            summary.additionalDirectories.map((d) => (
+              <span className="chip chip-mono" key={`${d.layer}:${d.path}`} title={d.path}>
+                {d.path}
+              </span>
+            ))
+          )}
+        </span>
+      </div>
     </div>
   )
 }

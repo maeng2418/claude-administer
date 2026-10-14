@@ -7,7 +7,15 @@
 export type Scope = 'user' | 'project' | 'plugin'
 
 /** 좌측 사이드바 탭과 1:1 대응되는 자산 종류. */
-export type AssetKind = 'skill' | 'agent' | 'command' | 'hook' | 'plugin' | 'mcp'
+export type AssetKind =
+  | 'skill'
+  | 'agent'
+  | 'command'
+  | 'hook'
+  | 'plugin'
+  | 'mcp'
+  | 'permission'
+  | 'marketplace'
 
 /**
  * 자산을 끄는 방법. settings.json 의 어느 키를 쓰는지가 종류마다 다르다.
@@ -172,6 +180,51 @@ export interface McpAsset extends AssetBase {
   args?: string[]
 }
 
+/**
+ * 권한 규칙이 어느 설정 파일에서 왔는지.
+ *
+ * Scope 를 재사용하지 않는 이유는 프로젝트 레이어가 둘이기 때문이다 —
+ * .claude/settings.json 과 .claude/settings.local.json 은 다른 파일이고,
+ * local 쪽이 보통 커밋되지 않는다.
+ */
+export type PermissionLayer = 'user' | 'project' | 'local'
+
+/** 규칙의 성격. Claude Code 의 permissions 키 이름을 그대로 쓴다. */
+export type PermissionKind = 'allow' | 'ask' | 'deny'
+
+/** permissions 의 규칙 하나. */
+export interface PermissionAsset extends AssetBase {
+  kind: 'permission'
+  layer: PermissionLayer
+  rule: PermissionKind
+  /** 규칙 원문 (예: `Bash(git add *)`). */
+  pattern: string
+  /**
+   * 규칙이 거는 도구. `Bash(...)` 의 `Bash`.
+   * 괄호가 없는 MCP 도구명은 'MCP' 로 묶는다.
+   */
+  tool: string
+  /** 괄호 안의 인자. 없으면 undefined. */
+  argument?: string
+}
+
+/** 마켓플레이스 출처 종류. */
+export type MarketplaceSource = 'github' | 'git' | 'directory' | 'unknown'
+
+/** 플러그인 마켓플레이스 하나. */
+export interface MarketplaceAsset extends AssetBase {
+  kind: 'marketplace'
+  source: MarketplaceSource
+  /** github 면 owner/repo, git 이면 URL, directory 면 경로. */
+  origin?: string
+  installLocation?: string
+  lastUpdated?: string
+  /** 이 마켓플레이스에서 설치된 플러그인 수. 0 이면 쓰이지 않는 출처다. */
+  installedPlugins: number
+  /** settings.json 의 extraKnownMarketplaces 에도 있는지. */
+  inSettings: boolean
+}
+
 export type Asset =
   | SkillAsset
   | AgentAsset
@@ -179,6 +232,8 @@ export type Asset =
   | HookAsset
   | PluginAsset
   | McpAsset
+  | PermissionAsset
+  | MarketplaceAsset
 
 /** 프로젝트를 어떻게 알게 됐는지. 목록에서 출처를 구분해 보여준다. */
 export type ProjectOrigin = 'discovered' | 'added'
@@ -204,6 +259,16 @@ export interface ScanIssue {
   message: string
 }
 
+/** 규칙 목록 밖에 있는 권한 설정. */
+export interface PermissionSummary {
+  /** 권한 요청 기본 동작 (예: auto). 레이어별로 다를 수 있어 함께 보여준다. */
+  defaultMode: { layer: PermissionLayer; value: string }[]
+  /** 프로젝트 밖인데도 접근이 허용된 디렉토리. */
+  additionalDirectories: { layer: PermissionLayer; path: string }[]
+  /** 레이어별 규칙 수. */
+  counts: { layer: PermissionLayer; path: string; allow: number; ask: number; deny: number }[]
+}
+
 /** 스캔 한 번의 결과 전체. */
 export interface Inventory {
   scannedAt: string
@@ -219,6 +284,10 @@ export interface Inventory {
   hooks: HookAsset[]
   plugins: PluginAsset[]
   mcp: McpAsset[]
+  permissions: PermissionAsset[]
+  marketplaces: MarketplaceAsset[]
+  /** 권한 탭 머리에 보여줄 요약. 규칙 목록으로는 알 수 없는 설정들. */
+  permissionSummary: PermissionSummary
   issues: ScanIssue[]
 }
 

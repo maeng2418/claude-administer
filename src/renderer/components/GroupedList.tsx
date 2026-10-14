@@ -20,6 +20,7 @@ export function GroupedList({
   onReveal,
   onToggle,
   onGoToPlugin,
+  onGoToMarketplacePlugins,
   onRemove,
   busyKey,
   rowKeyFor
@@ -33,6 +34,7 @@ export function GroupedList({
   onReveal: (path: string) => void
   onToggle: (asset: Asset, next: boolean) => void
   onGoToPlugin: (pluginId: string) => void
+  onGoToMarketplacePlugins: (marketplace: string) => void
   onRemove: (asset: Asset) => void
   busyKey: string | null
   rowKeyFor: (asset: Asset) => string
@@ -78,6 +80,7 @@ export function GroupedList({
       onReveal={onReveal}
       onToggle={onToggle}
       onGoToPlugin={onGoToPlugin}
+      onGoToMarketplacePlugins={onGoToMarketplacePlugins}
       onRemove={onRemove}
       busy={busyKey === rowKeyFor(asset)}
     />

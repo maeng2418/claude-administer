@@ -1,4 +1,4 @@
-import { ConflictBadge, OffBadge, ScopeBadge } from './Badges.js'
+import { ConflictBadge, LayerBadge, OffBadge, RuleBadge, ScopeBadge } from './Badges.js'
 import type { Asset } from '../../shared/types.js'
 
 /** 한 자산을 한 줄로 그린다. 종류별로 다른 보조 정보를 덧붙인다. */
@@ -8,6 +8,7 @@ export function AssetRow({
   onReveal,
   onToggle,
   onGoToPlugin,
+  onGoToMarketplacePlugins,
   onRemove,
   busy
 }: {
@@ -17,6 +18,8 @@ export function AssetRow({
   onToggle?: (asset: Asset, next: boolean) => void
   /** 플러그인 탭으로 이동해 해당 플러그인을 찾아준다. */
   onGoToPlugin?: (pluginId: string) => void
+  /** 마켓플레이스 행에서 그 출처의 플러그인 목록으로 이동한다. */
+  onGoToMarketplacePlugins?: (marketplace: string) => void
   onRemove?: (asset: Asset) => void
   busy?: boolean
 }): React.JSX.Element {
@@ -27,7 +30,14 @@ export function AssetRow({
       <div className="row-main">
         <div className="row-head">
           <span className={`row-name${isOff ? ' is-off' : ''}`}>{asset.name}</span>
-          <ScopeBadge scope={asset.scope} />
+          {asset.kind === 'permission' ? (
+            <>
+              <RuleBadge rule={asset.rule} />
+              <LayerBadge layer={asset.layer} />
+            </>
+          ) : (
+            <ScopeBadge scope={asset.scope} />
+          )}
           {isOff && <OffBadge />}
           <ConflictBadge scope={asset.scope} shadowedBy={asset.shadowedBy ?? []} />
           <AssetExtras asset={asset} />
@@ -39,6 +49,18 @@ export function AssetRow({
       </div>
 
       <div className="row-actions">
+        {asset.kind === 'marketplace' &&
+          onGoToMarketplacePlugins &&
+          asset.installedPlugins > 0 && (
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={() => onGoToMarketplacePlugins(asset.name)}
+              title={`이 출처에서 설치된 플러그인 ${asset.installedPlugins}개를 봅니다.`}
+            >
+              플러그인 보기
+            </button>
+          )}
         {onToggle && (
           <ToggleButton
             asset={asset}
@@ -213,6 +235,35 @@ function AssetExtras({ asset }: { asset: Asset }): React.JSX.Element | null {
       )
     case 'mcp':
       return <span className="chip">{asset.transport}</span>
+    case 'permission':
+      return (
+        <>
+          <span className="chip">{asset.tool}</span>
+          {asset.argument && <span className="chip chip-mono">{asset.argument}</span>}
+        </>
+      )
+    case 'marketplace':
+      return (
+        <>
+          <span className="chip">{asset.source}</span>
+          <span className={`chip${asset.installedPlugins === 0 ? ' chip-warn' : ''}`}>
+            플러그인 {asset.installedPlugins}개
+          </span>
+          {!asset.inSettings && (
+            <span
+              className="chip"
+              title="settings.json 의 extraKnownMarketplaces 에는 없고 레지스트리에만 있습니다"
+            >
+              레지스트리만
+            </span>
+          )}
+          {asset.lastUpdated && (
+            <span className="chip" title={asset.lastUpdated}>
+              {asset.lastUpdated.slice(0, 10)}
+            </span>
+          )}
+        </>
+      )
     default:
       return null
   }
