@@ -281,6 +281,5 @@ export interface AdminApi {
   toggleAsset(request: ToggleRequest): Promise<ToggleResult>
   /** 자산을 제거한다. 확인 대화는 main 에서 띄운다. */
   removeAsset(request: RemoveRequest): Promise<RemoveResult>
-  openPath(path: string): Promise<{ ok: boolean; error?: string }>
   revealPath(path: string): Promise<{ ok: boolean; error?: string }>
 }

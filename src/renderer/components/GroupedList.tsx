@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { AssetRow } from './AssetRow.js'
+import { ExternalLinkIcon, TrashIcon } from './Icons.js'
 import type { Asset, PluginAsset } from '../../shared/types.js'
 
 /**
@@ -16,7 +17,6 @@ export function GroupedList({
   assets,
   plugins,
   searching,
-  onOpen,
   onReveal,
   onToggle,
   onGoToPlugin,
@@ -30,7 +30,6 @@ export function GroupedList({
   plugins: PluginAsset[]
   /** 검색 중이면 그룹을 모두 펼친다 — 접힌 안에 결과가 숨으면 못 찾은 줄 안다. */
   searching: boolean
-  onOpen: (path: string) => void
   onReveal: (path: string) => void
   onToggle: (asset: Asset, next: boolean) => void
   onGoToPlugin: (pluginId: string) => void
@@ -83,7 +82,6 @@ export function GroupedList({
     <AssetRow
       key={rowKeyFor(asset)}
       asset={asset}
-      onOpen={onOpen}
       onReveal={onReveal}
       onToggle={onToggle}
       onGoToPlugin={onGoToPlugin}
@@ -126,32 +124,45 @@ export function GroupedList({
                 <span className="badge badge-plugin">플러그인</span>
                 {plugin?.disabled && <span className="badge badge-off">꺼짐</span>}
                 <span className="chip">{items.length}개</span>
-                {plugin?.marketplace && <span className="chip">{plugin.marketplace}</span>}
+                {plugin?.marketplace && (
+                  <span className="chip chip-quiet">{plugin.marketplace}</span>
+                )}
               </button>
 
               {plugin && (
                 <div className="group-actions">
                   <button
                     type="button"
-                    className="btn btn-sm"
+                    role="switch"
+                    aria-checked={plugin.disabled !== true}
+                    className={`switch${plugin.disabled !== true ? ' is-on' : ''}`}
                     disabled={busyKey === rowKeyFor(plugin)}
                     onClick={() => onToggle(plugin, plugin.disabled === true)}
                     title="이 플러그인을 켜거나 끕니다. 제공하는 자산도 함께 바뀝니다."
+                    aria-label={`${plugin.name} 플러그인 ${plugin.disabled ? '켜기' : '끄기'}`}
                   >
-                    {busyKey === rowKeyFor(plugin)
-                      ? '…'
-                      : plugin.disabled
-                        ? '플러그인 켜기'
-                        : '플러그인 끄기'}
+                    <span className="switch-track">
+                      <span className="switch-thumb" />
+                    </span>
                   </button>
                   <button
                     type="button"
-                    className="btn btn-sm btn-danger"
+                    className="btn btn-icon"
+                    onClick={() => onGoToPlugin(pluginId)}
+                    title={`플러그인 탭에서 ${pluginId} 를 찾아줍니다.`}
+                    aria-label={`${pluginId} 플러그인으로 이동`}
+                  >
+                    <ExternalLinkIcon />
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-icon btn-danger"
                     disabled={busyKey === rowKeyFor(plugin)}
                     onClick={() => onRemove(plugin)}
                     title="claude plugin uninstall 로 이 플러그인을 제거합니다."
+                    aria-label={`${plugin.name} 플러그인 제거`}
                   >
-                    제거
+                    <TrashIcon />
                   </button>
                 </div>
               )}

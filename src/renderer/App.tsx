@@ -161,11 +161,6 @@ export function App(): React.JSX.Element {
     setNotice(`"${marketplace}" 출처의 플러그인만 보여줍니다.`)
   }, [])
 
-  const handleOpen = useCallback(async (path: string) => {
-    const result = await window.api.openPath(path)
-    if (!result.ok) setNotice(`열기 실패: ${result.error ?? '알 수 없는 오류'}`)
-  }, [])
-
   const handleReveal = useCallback(async (path: string) => {
     const result = await window.api.revealPath(path)
     if (!result.ok) setNotice(`위치 열기 실패: ${result.error ?? '알 수 없는 오류'}`)
@@ -362,7 +357,6 @@ export function App(): React.JSX.Element {
             assets={rows}
             plugins={inventory?.plugins ?? []}
             searching={query !== ''}
-            onOpen={handleOpen}
             onReveal={handleReveal}
             onToggle={handleToggle}
             onGoToPlugin={handleGoToPlugin}

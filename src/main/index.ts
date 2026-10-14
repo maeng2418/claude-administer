@@ -276,18 +276,6 @@ function registerHandlers(): void {
   )
 
   ipcMain.handle(
-    'admin:openPath',
-    async (_event, target: unknown): Promise<{ ok: boolean; error?: string }> => {
-      if (!(await isAllowedPath(target))) {
-        return { ok: false, error: '허용되지 않은 경로입니다.' }
-      }
-      // openPath 는 실패 시 예외가 아니라 사유 문자열을 돌려준다.
-      const failure = await shell.openPath(target as string)
-      return failure === '' ? { ok: true } : { ok: false, error: failure }
-    }
-  )
-
-  ipcMain.handle(
     'admin:revealPath',
     async (_event, target: unknown): Promise<{ ok: boolean; error?: string }> => {
       if (!(await isAllowedPath(target))) {

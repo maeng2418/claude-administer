@@ -1,10 +1,10 @@
 import { ConflictBadge, OffBadge, ScopeBadge } from './Badges.js'
+import { ExternalLinkIcon, FolderIcon, TrashIcon } from './Icons.js'
 import type { Asset } from '../../shared/types.js'
 
 /** 한 자산을 한 줄로 그린다. 종류별로 다른 보조 정보를 덧붙인다. */
 export function AssetRow({
   asset,
-  onOpen,
   onReveal,
   onToggle,
   onGoToPlugin,
@@ -14,7 +14,6 @@ export function AssetRow({
   busy
 }: {
   asset: Asset
-  onOpen: (path: string) => void
   onReveal: (path: string) => void
   onToggle?: (asset: Asset, next: boolean) => void
   /** 플러그인 탭으로 이동해 해당 플러그인을 찾아준다. */
@@ -39,15 +38,22 @@ export function AssetRow({
       <div className="row-main">
         <div className="row-head">
           <span className={`row-name${isOff ? ' is-off' : ''}`}>{asset.name}</span>
-          <ScopeBadge scope={asset.scope} />
+          {/* 그룹 안에서는 scope 배지를 숨긴다 — 헤더가 이미 '플러그인' 이라고 말한다. */}
+          {!inPluginGroup && <ScopeBadge scope={asset.scope} />}
           {isOff && <OffBadge />}
           <ConflictBadge scope={asset.scope} shadowedBy={asset.shadowedBy ?? []} />
-          <AssetExtras asset={asset} />
+          <AssetExtras asset={asset} inPluginGroup={inPluginGroup} />
         </div>
 
-        {asset.description && <div className="row-desc">{asset.description}</div>}
+        {asset.description && (
+          <div className="row-desc" title={asset.description}>
+            {asset.description}
+          </div>
+        )}
 
-        <div className="row-meta">{asset.path}</div>
+        <div className="row-meta" title={asset.path}>
+          {shortenPath(asset.path)}
+        </div>
       </div>
 
       <div className="row-actions">
@@ -74,23 +80,40 @@ export function AssetRow({
         {onRemove && <RemoveButton asset={asset} onRemove={onRemove} busy={busy} />}
         <button
           type="button"
-          className="btn btn-sm"
-          onClick={() => onOpen(asset.path)}
-          title="기본 편집기로 열기"
-        >
-          열기
-        </button>
-        <button
-          type="button"
-          className="btn btn-sm"
+          className="btn btn-icon"
           onClick={() => onReveal(asset.path)}
-          title="Finder 에서 보기"
+          title={`Finder 에서 보기 — ${asset.path}`}
+          aria-label={`${asset.name} 을(를) Finder 에서 보기`}
         >
-          위치
+          <FolderIcon />
         </button>
       </div>
     </div>
   )
+}
+
+/**
+ * 긴 절대 경로를 뒤쪽 위주로 줄인다.
+ *
+ * 한 그룹 안의 경로는 앞부분이 거의 같고(…/plugins/cache/<marketplace>/<plugin>/<버전>/)
+ * 구분되는 건 뒤쪽이다. 홈은 `~` 로 접고, 그래도 길면 앞을 잘라낸다.
+ * 전체 경로는 title 에 남겨 마우스를 올리면 볼 수 있다.
+ */
+function shortenPath(path: string): string {
+  const home = path.match(/^\/Users\/[^/]+/)?.[0]
+  const tilde = home ? path.replace(home, '~') : path
+  if (tilde.length <= 64) return tilde
+  const segments = tilde.split('/')
+  // 뒤에서부터 64자에 들어가는 만큼만 남긴다.
+  const kept: string[] = []
+  let length = 0
+  for (let i = segments.length - 1; i >= 0; i--) {
+    const segment = segments[i]!
+    if (length + segment.length + 1 > 60) break
+    kept.unshift(segment)
+    length += segment.length + 1
+  }
+  return `…/${kept.join('/')}`
 }
 
 /**
@@ -123,11 +146,12 @@ function ToggleButton({
       return (
         <button
           type="button"
-          className="btn btn-sm"
+          className="btn btn-icon"
           onClick={() => onGoToPlugin(pluginId)}
           title={`${toggle.reason ?? ''}\n\n누르면 플러그인 탭에서 ${pluginId} 를 찾아줍니다.`}
+          aria-label={`${pluginId} 플러그인으로 이동`}
         >
-          플러그인으로
+          <ExternalLinkIcon />
         </button>
       )
     }
@@ -147,12 +171,17 @@ function ToggleButton({
   return (
     <button
       type="button"
-      className={`btn btn-sm${isOn ? '' : ' btn-on'}`}
+      role="switch"
+      aria-checked={isOn}
+      className={`switch${isOn ? ' is-on' : ''}`}
       disabled={busy}
       onClick={() => onToggle(asset, !isOn)}
       title={`${mechanismLabel} 를 백업 후 수정합니다 (Claude Code 재시작 후 적용)`}
+      aria-label={`${asset.name} ${isOn ? '끄기' : '켜기'}`}
     >
-      {busy ? '…' : isOn ? '끄기' : '켜기'}
+      <span className="switch-track">
+        <span className="switch-thumb" />
+      </span>
     </button>
   )
 }
@@ -178,7 +207,7 @@ function RemoveButton({
   return (
     <button
       type="button"
-      className="btn btn-sm btn-danger"
+      className="btn btn-icon btn-danger"
       disabled={busy}
       onClick={() => onRemove(asset)}
       title={
@@ -186,27 +215,43 @@ function RemoveButton({
           ? `${remove.target} 을(를) 휴지통으로 보냅니다. Finder 에서 되돌릴 수 있습니다.`
           : `${remove.target} 을(를) claude plugin uninstall 로 제거합니다. 휴지통을 거치지 않지만 다시 설치할 수 있습니다.`
       }
+      aria-label={`${asset.name} 제거`}
     >
-      {busy ? '…' : '제거'}
+      {busy ? '…' : <TrashIcon />}
     </button>
   )
 }
 
-/** 자산 종류별 보조 정보(트리거, 이벤트, 버전 등). */
-function AssetExtras({ asset }: { asset: Asset }): React.JSX.Element | null {
+/**
+ * 자산 종류별 보조 정보(트리거, 이벤트, 버전 등).
+ *
+ * 그룹 안에서는 sourcePlugin 칩을 숨긴다 — 그룹 전체가 같은 플러그인이라
+ * 행마다 반복하면 같은 글자가 수십 번 나온다.
+ */
+function AssetExtras({
+  asset,
+  inPluginGroup
+}: {
+  asset: Asset
+  inPluginGroup?: boolean
+}): React.JSX.Element | null {
   switch (asset.kind) {
     case 'skill':
       return (
         <>
           {asset.trigger && <span className="chip">{asset.trigger}</span>}
-          {asset.sourcePlugin && <span className="chip">{asset.sourcePlugin}</span>}
+          {asset.sourcePlugin && !inPluginGroup && (
+            <span className="chip">{asset.sourcePlugin}</span>
+          )}
         </>
       )
     case 'command':
       return (
         <>
-          <span className="chip">{asset.invocation}</span>
-          {asset.sourcePlugin && <span className="chip">{asset.sourcePlugin}</span>}
+          <span className="chip chip-mono">{asset.invocation}</span>
+          {asset.sourcePlugin && !inPluginGroup && (
+            <span className="chip">{asset.sourcePlugin}</span>
+          )}
         </>
       )
     case 'agent':
