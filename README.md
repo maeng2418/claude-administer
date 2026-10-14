@@ -174,6 +174,13 @@ renderer 에는 Node 를 주지 않는다(`contextIsolation: true`, `nodeIntegra
 파일 접근은 전부 IPC 를 거치며, `열기` / `위치` 가 받는 경로는 정규화 후
 `~/.claude` 와 현재 프로젝트 아래로 제한된다 — `..` 를 쓴 경로 탈출은 거부된다.
 
+frontmatter 는 Claude Code 와 같은 너그러움으로 읽는다. `argument-hint` 처럼
+사람이 읽을 문자열을 받는 필드는 따옴표 없이 대괄호를 쓰는 일이 흔한데
+(`argument-hint: [list|save] [name]`), 엄격한 YAML 로는 `[` 가 flow sequence 라
+깨진다. 이런 필드는 문자열로 보고 다시 읽으므로, 파서가 Claude Code 보다
+엄격해서 멀쩡한 파일을 못 읽는 일은 없다. 두 번 다 실패하면 그때는 진짜
+깨진 파일이므로 사유를 그대로 남긴다.
+
 스캔은 읽기 전용이고 부분 실패를 허용한다. 파일 하나가 깨져도 스캔 전체가 멈추지 않고,
 읽지 못한 파일은 화면 상단에 접힌 목록으로 모인다.
 
