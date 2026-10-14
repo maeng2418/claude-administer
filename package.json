@@ -47,6 +47,12 @@
       "category": "public.app-category.developer-tools",
       "target": [
         {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        },
+        {
           "target": "dir",
           "arch": [
             "arm64"
@@ -54,6 +60,27 @@
         }
       ],
       "identity": null
-    }
+    },
+    "dmg": {
+      "title": "Claude Administer",
+      "contents": [
+        {
+          "x": 140,
+          "y": 180,
+          "type": "file"
+        },
+        {
+          "x": 400,
+          "y": 180,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ],
+      "window": {
+        "width": 540,
+        "height": 360
+      }
+    },
+    "publish": null
   }
 }
