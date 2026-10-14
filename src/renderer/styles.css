@@ -398,7 +398,74 @@ body {
 
 .sidebar-foot {
   border-top: 1px solid var(--border);
-  padding: 8px 12px 12px;
+  padding: 8px 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/*
+  사이드바 하단 요약 한 줄. 라벨은 왼쪽, 값은 오른쪽에 붙여
+  값끼리 세로로 정렬돼 훑기 쉽다.
+*/
+.side-stat {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  font: inherit;
+  font-size: 11px;
+  color: var(--text-faint);
+  text-align: left;
+  width: 100%;
+}
+
+.side-stat-value {
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 누를 수 있는 줄만 커서와 hover 를 준다 — 나머지는 읽는 값이다. */
+.side-stat-action {
+  cursor: pointer;
+}
+
+.side-stat-action:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.side-stat-action.is-active {
+  background: var(--accent-dim);
+  color: var(--text);
+}
+
+.side-stat-action.is-active .side-stat-value {
+  color: var(--text);
+}
+
+.side-stat-warn .side-stat-value {
+  color: var(--warn);
+}
+
+/* 참고용 값은 한 단계 더 흐리게. */
+.side-stat-quiet {
+  opacity: 0.75;
+}
+
+/* 필터가 걸려 있음을 본문에서도 알린다 — 목록이 짧은 이유가 보여야 한다. */
+.banner-filter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-color: var(--accent);
 }
 
 /* ---- 본문 ---- */

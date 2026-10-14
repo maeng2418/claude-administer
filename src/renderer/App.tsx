@@ -59,11 +59,15 @@ export function App(): React.JSX.Element {
   const [tab, setTab] = useState<AssetKind>('skill')
   const [query, setQuery] = useState('')
   const [busyKey, setBusyKey] = useState<string | null>(null)
+  /** 꺼진 자산만 보기. 검색과 함께 걸린다(둘 다 만족하는 것만 남는다). */
+  const [offOnly, setOffOnly] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
 
   const [projects, setProjects] = useState<ProjectRef[]>([])
   const [selected, setSelected] = useState<string | null>(null)
   const [projectIssues, setProjectIssues] = useState<number>(0)
+  /** 프로젝트 탐색 중 생긴 문제. 개수만으로는 무엇이 문제인지 알 수 없다. */
+  const [projectIssueDetail, setProjectIssueDetail] = useState<string>('')
 
   /** 자산을 다시 읽는다. 프로젝트 경로가 null 이면 전역만 읽는다. */
   const scan = useCallback(async (projectPath: string | null) => {
@@ -89,6 +93,9 @@ export function App(): React.JSX.Element {
       const result = await window.api.listProjects()
       setProjects(result.projects)
       setProjectIssues(result.issues.length)
+      setProjectIssueDetail(
+        result.issues.map((i) => `${i.path} — ${i.message}`).join(' / ')
+      )
       return result.lastSelected
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : String(err))
@@ -230,11 +237,45 @@ export function App(): React.JSX.Element {
   )
 
   const activeTab = TABS.find((t) => t.kind === tab) ?? TABS[0]!
+
+  /** 꺼진 자산 보기로 전환. 어느 탭에 몇 개인지 모르므로 스킬 탭부터 보여준다. */
+  const showOffOnly = useCallback(() => {
+    setOffOnly(true)
+    setQuery('')
+    setNotice(null)
+  }, [])
   const rows = useMemo(() => {
     if (!inventory) return []
     const list = inventory[activeTab.field] as Asset[]
-    return list.filter((a) => matches(a, query))
-  }, [inventory, activeTab.field, query])
+    return list.filter((a) => matches(a, query) && (!offOnly || a.disabled === true))
+  }, [inventory, activeTab.field, query, offOnly])
+
+  /**
+   * 사이드바 집계.
+   *
+   * 탭별 개수와 달리 전체 자산을 가로질러 센다 — "지금 뭐가 꺼져 있나"는
+   * 탭을 옮겨 다니며 찾을 질문이 아니다.
+   */
+  const stats = useMemo(() => {
+    if (!inventory) return null
+    const all = TABS.flatMap((t) => inventory[t.field] as Asset[])
+    const byScope = { user: 0, project: 0, plugin: 0 }
+    let off = 0
+    for (const asset of all) {
+      byScope[asset.scope]++
+      if (asset.disabled === true) off++
+    }
+    return { total: all.length, off, byScope }
+  }, [inventory])
+
+  /** 마지막 스캔 시각을 시:분:초로. 날짜는 같은 날이 대부분이라 생략한다. */
+  const scannedAtLabel = useMemo(() => {
+    if (!inventory) return null
+    const at = new Date(inventory.scannedAt)
+    return Number.isNaN(at.getTime())
+      ? null
+      : at.toLocaleTimeString('ko-KR', { hour12: false })
+  }, [inventory])
 
   const totalFor = useCallback(
     (field: keyof Inventory): number => {
@@ -280,11 +321,64 @@ export function App(): React.JSX.Element {
         </nav>
 
         <div className="sidebar-foot">
-          <div className="nav-count" title={inventory?.userRoot}>
-            전역: ~/.claude
-          </div>
+          {stats && (
+            <>
+              {/* 꺼진 자산은 해당 행까지 가야 보인다. 여기에 모아 둔다. */}
+              {stats.off > 0 ? (
+                <button
+                  type="button"
+                  className={`side-stat side-stat-action${offOnly ? ' is-active' : ''}`}
+                  onClick={() => (offOnly ? setOffOnly(false) : showOffOnly())}
+                  title={
+                    offOnly
+                      ? '전체 자산을 다시 봅니다'
+                      : '꺼진 자산만 걸러서 봅니다 (탭을 옮기면 그 탭의 꺼진 자산이 보입니다)'
+                  }
+                >
+                  <span>꺼짐</span>
+                  <span className="side-stat-value">
+                    {offOnly ? '보는 중' : `${stats.off}개`}
+                  </span>
+                </button>
+              ) : (
+                <div className="side-stat">
+                  <span>꺼짐</span>
+                  <span className="side-stat-value">없음</span>
+                </div>
+              )}
+
+              <div className="side-stat" title="자산이 어느 범위에서 왔는지">
+                <span>범위</span>
+                <span className="side-stat-value">
+                  전역 {stats.byScope.user} · 프로젝트 {stats.byScope.project} · 플러그인{' '}
+                  {stats.byScope.plugin}
+                </span>
+              </div>
+            </>
+          )}
+
           {projectIssues > 0 && (
-            <div className="nav-count">프로젝트 탐색 경고 {projectIssues}건</div>
+            <button
+              type="button"
+              className="side-stat side-stat-action side-stat-warn"
+              onClick={() => setNotice(projectIssueDetail)}
+              title="프로젝트를 찾는 중 생긴 문제를 봅니다"
+            >
+              <span>탐색 경고</span>
+              <span className="side-stat-value">{projectIssues}건</span>
+            </button>
+          )}
+
+          <div className="side-stat side-stat-quiet" title={inventory?.userRoot}>
+            <span>전역</span>
+            <span className="side-stat-value">~/.claude</span>
+          </div>
+
+          {scannedAtLabel && (
+            <div className="side-stat side-stat-quiet" title={inventory?.scannedAt}>
+              <span>마지막 스캔</span>
+              <span className="side-stat-value">{scannedAtLabel}</span>
+            </div>
           )}
         </div>
       </aside>
@@ -310,6 +404,15 @@ export function App(): React.JSX.Element {
         </div>
 
         <div className="content">
+          {offOnly && (
+            <div className="banner banner-filter" role="status">
+              <span>꺼진 자산만 보고 있습니다.</span>
+              <button type="button" className="btn btn-sm" onClick={() => setOffOnly(false)}>
+                전체 보기
+              </button>
+            </div>
+          )}
+
           {notice && (
             <div className="banner" role="status">
               {notice}
@@ -347,9 +450,11 @@ export function App(): React.JSX.Element {
 
           {!loading && rows.length === 0 && (
             <div className="state">
-              {query === ''
-                ? `${activeTab.label} 자산이 없습니다.`
-                : `"${query}" 와 일치하는 ${activeTab.label} 이 없습니다.`}
+              {offOnly
+                ? `이 탭에는 꺼진 ${activeTab.label} 이 없습니다. 다른 탭을 눌러보세요.`
+                : query === ''
+                  ? `${activeTab.label} 자산이 없습니다.`
+                  : `"${query}" 와 일치하는 ${activeTab.label} 이 없습니다.`}
             </div>
           )}
 
