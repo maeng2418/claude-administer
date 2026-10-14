@@ -10,7 +10,8 @@ import type { ToggleMechanism, ToggleRequest, ToggleResult } from '../shared/typ
  * 뜨지 않는다. 그래서 다섯 가지를 지킨다:
  *
  *  1. 백업 먼저 — 쓰기 전에 타임스탬프 사본을 만든다.
- *  2. 한 키만 — 담당 키 외의 키는 읽은 그대로 되돌려 쓴다.
+ *  2. 한 키만 — 담당 키(skillOverrides 또는 enabledPlugins) 외의 키는
+ *     읽은 그대로 되돌려 쓴다.
  *  3. 원자적 교체 — 임시 파일에 쓰고 rename 한다. 쓰기 중 종료되어도
  *     원본이 반쯤 덮인 상태로 남지 않는다.
  *  4. 되읽어 검증 — 쓴 뒤 다시 파싱해서 의도한 값인지 확인한다.
@@ -67,11 +68,6 @@ function objectClone(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? { ...(value as Record<string, unknown>) }
     : {}
-}
-
-/** 문자열 배열만 남긴 사본. */
-function stringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : []
 }
 
 // ---------------------------------------------------------------------------
@@ -135,40 +131,6 @@ function planSkillOverrides(key: string, enabled: boolean): MechanismPlan {
   }
 }
 
-/**
- * 에이전트: permissions.deny 에 Agent(name) 추가 / 제거
- *
- * deny 키가 아직 없으면 새로 만든다. allow 목록은 건드리지 않는다 —
- * 지금 57개 항목이 들어있고, 그건 권한 승인 설정이라 끄기와 무관하다.
- */
-function planPermissionsDeny(key: string, enabled: boolean): MechanismPlan {
-  const entry = `Agent(${key})`
-  return {
-    createsKey: 'permissions',
-    apply(settings) {
-      const permissions = objectClone(settings['permissions'])
-      const deny = stringArray(permissions['deny'])
-      const next = enabled
-        ? deny.filter((d) => d !== entry)
-        : deny.includes(entry)
-          ? deny
-          : [...deny, entry]
-      return {
-        ok: true,
-        settings: { ...settings, permissions: { ...permissions, deny: next } }
-      }
-    },
-    verify(settings) {
-      const permissions = settings['permissions']
-      const deny =
-        permissions && typeof permissions === 'object'
-          ? stringArray((permissions as Record<string, unknown>)['deny'])
-          : []
-      return enabled ? !deny.includes(entry) : deny.includes(entry)
-    }
-  }
-}
-
 /** 요청을 변경 계획으로 바꾼다. */
 function planFor(mechanism: ToggleMechanism, key: string, enabled: boolean): MechanismPlan {
   switch (mechanism) {
@@ -176,8 +138,6 @@ function planFor(mechanism: ToggleMechanism, key: string, enabled: boolean): Mec
       return planEnabledPlugins(key, enabled)
     case 'skillOverrides':
       return planSkillOverrides(key, enabled)
-    case 'permissionsDeny':
-      return planPermissionsDeny(key, enabled)
   }
 }
 

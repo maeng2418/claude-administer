@@ -72,7 +72,14 @@ export function GroupedList({
     [plugins]
   )
 
-  const row = (asset: Asset): React.JSX.Element => (
+  /**
+   * 행 하나.
+   *
+   * @param inGroup 그룹 안의 행인지. 그룹 안에서는 토글 칸을 비운다 —
+   *   그룹 헤더에 이미 같은 플러그인의 토글과 제거가 있어서, 행마다 반복하면
+   *   같은 버튼이 수십 개 중복된다.
+   */
+  const row = (asset: Asset, inGroup = false): React.JSX.Element => (
     <AssetRow
       key={rowKeyFor(asset)}
       asset={asset}
@@ -80,6 +87,7 @@ export function GroupedList({
       onReveal={onReveal}
       onToggle={onToggle}
       onGoToPlugin={onGoToPlugin}
+      inPluginGroup={inGroup}
       onGoToMarketplacePlugins={onGoToMarketplacePlugins}
       onRemove={onRemove}
       busy={busyKey === rowKeyFor(asset)}
@@ -97,7 +105,7 @@ export function GroupedList({
 
   return (
     <>
-      {flat.map(row)}
+      {flat.map((asset) => row(asset))}
 
       {groups.map(([pluginId, items]) => {
         const plugin = pluginById.get(pluginId)
@@ -149,7 +157,9 @@ export function GroupedList({
               )}
             </div>
 
-            {!isCollapsed && <div className="group-body">{items.map(row)}</div>}
+            {!isCollapsed && (
+              <div className="group-body">{items.map((a) => row(a, true))}</div>
+            )}
           </section>
         )
       })}

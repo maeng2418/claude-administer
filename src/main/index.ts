@@ -99,11 +99,7 @@ async function isAllowedPath(target: unknown): Promise<boolean> {
 }
 
 /** 토글 요청이 올바른 모양인지 검사한다. renderer 가 보낸 값은 신뢰하지 않는다. */
-const TOGGLE_MECHANISMS: ToggleMechanism[] = [
-  'skillOverrides',
-  'permissionsDeny',
-  'enabledPlugins'
-]
+const TOGGLE_MECHANISMS: ToggleMechanism[] = ['skillOverrides', 'enabledPlugins']
 
 function parseToggleRequest(raw: unknown): ToggleRequest | string {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {

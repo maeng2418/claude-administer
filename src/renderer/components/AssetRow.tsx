@@ -1,4 +1,4 @@
-import { ConflictBadge, LayerBadge, OffBadge, RuleBadge, ScopeBadge } from './Badges.js'
+import { ConflictBadge, OffBadge, ScopeBadge } from './Badges.js'
 import type { Asset } from '../../shared/types.js'
 
 /** 한 자산을 한 줄로 그린다. 종류별로 다른 보조 정보를 덧붙인다. */
@@ -8,6 +8,7 @@ export function AssetRow({
   onReveal,
   onToggle,
   onGoToPlugin,
+  inPluginGroup,
   onGoToMarketplacePlugins,
   onRemove,
   busy
@@ -18,6 +19,14 @@ export function AssetRow({
   onToggle?: (asset: Asset, next: boolean) => void
   /** 플러그인 탭으로 이동해 해당 플러그인을 찾아준다. */
   onGoToPlugin?: (pluginId: string) => void
+  /**
+   * 플러그인 그룹 안의 행인지.
+   *
+   * 그룹 헤더에 이미 그 플러그인의 토글과 제거가 있으므로, 그룹 안에서는
+   * 토글 칸을 아예 비운다. '플러그인으로' 를 빼고 '끄기 불가' 를 남기면
+   * 중복 버튼이 죽은 버튼으로 바뀌는 것뿐이라 더 나쁘다.
+   */
+  inPluginGroup?: boolean
   /** 마켓플레이스 행에서 그 출처의 플러그인 목록으로 이동한다. */
   onGoToMarketplacePlugins?: (marketplace: string) => void
   onRemove?: (asset: Asset) => void
@@ -30,14 +39,7 @@ export function AssetRow({
       <div className="row-main">
         <div className="row-head">
           <span className={`row-name${isOff ? ' is-off' : ''}`}>{asset.name}</span>
-          {asset.kind === 'permission' ? (
-            <>
-              <RuleBadge rule={asset.rule} />
-              <LayerBadge layer={asset.layer} />
-            </>
-          ) : (
-            <ScopeBadge scope={asset.scope} />
-          )}
+          <ScopeBadge scope={asset.scope} />
           {isOff && <OffBadge />}
           <ConflictBadge scope={asset.scope} shadowedBy={asset.shadowedBy ?? []} />
           <AssetExtras asset={asset} />
@@ -61,7 +63,7 @@ export function AssetRow({
               플러그인 보기
             </button>
           )}
-        {onToggle && (
+        {onToggle && !inPluginGroup && (
           <ToggleButton
             asset={asset}
             onToggle={onToggle}
@@ -114,6 +116,8 @@ function ToggleButton({
 
   if (toggle.mechanism === null) {
     // 플러그인을 끄면 함께 꺼지는 자산이면, 막다른 버튼 대신 그 플러그인으로 보낸다.
+    // 단 그룹 안에서는 onGoToPlugin 을 넘기지 않는다 — 그룹 헤더에 이미 같은
+    // 플러그인의 토글과 제거가 있어서 행마다 반복하면 같은 버튼이 수십 개 된다.
     if (toggle.viaPlugin && onGoToPlugin) {
       const pluginId = toggle.viaPlugin
       return (
@@ -138,9 +142,7 @@ function ToggleButton({
   const mechanismLabel =
     toggle.mechanism === 'skillOverrides'
       ? 'settings.json 의 skillOverrides'
-      : toggle.mechanism === 'permissionsDeny'
-        ? 'settings.json 의 permissions.deny'
-        : 'settings.json 의 enabledPlugins'
+      : 'settings.json 의 enabledPlugins'
 
   return (
     <button
@@ -235,13 +237,6 @@ function AssetExtras({ asset }: { asset: Asset }): React.JSX.Element | null {
       )
     case 'mcp':
       return <span className="chip">{asset.transport}</span>
-    case 'permission':
-      return (
-        <>
-          <span className="chip">{asset.tool}</span>
-          {asset.argument && <span className="chip chip-mono">{asset.argument}</span>}
-        </>
-      )
     case 'marketplace':
       return (
         <>

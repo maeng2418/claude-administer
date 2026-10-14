@@ -138,39 +138,6 @@ body {
   gap: 6px;
 }
 
-/* ---- 권한 요약 ---- */
-.overview {
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  padding: 8px 10px;
-  margin: 6px 0 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.overview-row {
-  display: flex;
-  gap: 10px;
-  align-items: baseline;
-}
-
-.overview-label {
-  color: var(--text-faint);
-  font-size: 11px;
-  flex: none;
-  width: 110px;
-}
-
-.overview-value {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  font-size: 11px;
-  color: var(--text-dim);
-  min-width: 0;
-}
-
 /* 경로나 패턴은 고정폭이 읽기 쉽다. */
 .chip-mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -181,22 +148,6 @@ body {
 .chip-warn {
   border-color: var(--warn, #d98c3a);
   color: var(--warn, #d98c3a);
-}
-
-/* 규칙 성격 배지. 글자가 함께 있으므로 색은 보조 신호다. */
-.badge-rule-allow {
-  border-color: #3f7a4e;
-  color: #7fc08e;
-}
-
-.badge-rule-ask {
-  border-color: #8a7033;
-  color: #d9b368;
-}
-
-.badge-rule-deny {
-  border-color: #8a3f3f;
-  color: #d98a8a;
 }
 
 /* ---- 플러그인 그룹 ---- */

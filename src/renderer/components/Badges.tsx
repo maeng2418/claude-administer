@@ -1,4 +1,4 @@
-import type { PermissionKind, PermissionLayer, Scope } from '../../shared/types.js'
+import type { Scope } from '../../shared/types.js'
 
 /** 자산이 어느 범위에 있는지 보여주는 배지. */
 export function ScopeBadge({ scope }: { scope: Scope }): React.JSX.Element {
@@ -44,23 +44,4 @@ export function ConflictBadge({
 /** 꺼져 있는 자산 표시. */
 export function OffBadge(): React.JSX.Element {
   return <span className="badge badge-off">꺼짐</span>
-}
-
-/** 권한 규칙이 어느 설정 파일에서 왔는지. */
-export function LayerBadge({ layer }: { layer: PermissionLayer }): React.JSX.Element {
-  const label = layer === 'user' ? '전역' : layer === 'project' ? '프로젝트' : '프로젝트 로컬'
-  // local 은 project 와 색을 공유하되 라벨로 구분한다 — 둘 다 프로젝트 설정이다.
-  const tone = layer === 'user' ? 'user' : 'project'
-  return <span className={`badge badge-${tone}`}>{label}</span>
-}
-
-/**
- * 규칙 성격 배지.
- *
- * 색만으로 구분하지 않도록 글자를 함께 둔다 — '허용'과 '거부'를 색으로만
- * 구분하면 색을 못 가리는 사용자에게 정반대로 읽힌다.
- */
-export function RuleBadge({ rule }: { rule: PermissionKind }): React.JSX.Element {
-  const label = rule === 'allow' ? '허용' : rule === 'ask' ? '확인' : '거부'
-  return <span className={`badge badge-rule-${rule}`}>{label}</span>
 }

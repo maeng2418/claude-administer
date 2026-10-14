@@ -2,7 +2,7 @@ import { readFile, readdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 import { parseFrontmatter, readString, readStringList } from './frontmatter.js'
-import { collectMarketplaces, collectPermissions } from './permissions.js'
+import { collectMarketplaces } from './marketplaces.js'
 import type {
   AgentAsset,
   Asset,
@@ -108,18 +108,10 @@ async function readMarkdownMeta(
 interface ToggleState {
   /** skillOverrides 에서 "off" 인 스킬 이름. */
   skillsOff: Set<string>
-  /** permissions.deny 의 Agent(...) 에서 뽑은 에이전트 이름. */
-  agentsDenied: Set<string>
 }
 
 /** 비어 있는 토글 상태. settings.json 을 못 읽었을 때 쓴다. */
-const NO_TOGGLES: ToggleState = {
-  skillsOff: new Set(),
-  agentsDenied: new Set()
-}
-
-/** permissions.deny 항목에서 Agent(name) 의 name 을 뽑는다. */
-const AGENT_DENY_PATTERN = /^Agent\(([^)]+)\)$/
+const NO_TOGGLES: ToggleState = { skillsOff: new Set() }
 
 /** settings.json 에서 끄기 설정을 모은다. */
 function readToggleState(settings: Record<string, unknown> | null): ToggleState {
@@ -133,20 +125,7 @@ function readToggleState(settings: Record<string, unknown> | null): ToggleState 
     }
   }
 
-  const agentsDenied = new Set<string>()
-  const permissions = settings['permissions']
-  if (permissions && typeof permissions === 'object' && !Array.isArray(permissions)) {
-    const deny = (permissions as Record<string, unknown>)['deny']
-    if (Array.isArray(deny)) {
-      for (const item of deny) {
-        if (typeof item !== 'string') continue
-        const match = AGENT_DENY_PATTERN.exec(item.trim())
-        if (match?.[1]) agentsDenied.add(match[1].trim())
-      }
-    }
-  }
-
-  return { skillsOff, agentsDenied }
+  return { skillsOff }
 }
 
 /** 끌 수 없는 자산에 붙일 사유. UI 툴팁에 그대로 나간다. */
@@ -155,7 +134,9 @@ const NO_TOGGLE_REASONS = {
   pluginAsset: '플러그인이 제공하는 자산입니다. 플러그인 탭에서 플러그인을 끄세요.',
   command: 'Claude Code 에 커맨드를 끄는 전용 설정이 없습니다. 파일을 옮기거나 지워야 합니다.',
   hook: '훅은 settings.json 의 hooks 항목을 직접 지워야 끌 수 있습니다. 편집기로 열어 수정하세요.',
-  mcp: 'MCP 서버는 mcp.json 의 항목을 직접 지워야 끌 수 있습니다. 편집기로 열어 수정하세요.'
+  mcp: 'MCP 서버는 mcp.json 의 항목을 직접 지워야 끌 수 있습니다. 편집기로 열어 수정하세요.',
+  agent:
+    '에이전트를 끄려면 settings.json 의 permissions.deny 에 Agent(이름) 을 넣어야 합니다. 이 도구는 권한 설정을 수정하지 않습니다. 편집기로 열어 수정하세요.'
 } as const
 
 /** 제거할 수 없는 자산에 붙일 사유. */
@@ -256,8 +237,7 @@ async function scanSkills(
 async function scanAgents(
   root: string,
   scope: Scope,
-  issues: IssueLog,
-  toggles: ToggleState
+  issues: IssueLog
 ): Promise<AgentAsset[]> {
   const dir = join(root, 'agents')
   const out: AgentAsset[] = []
@@ -273,7 +253,6 @@ async function scanAgents(
       if (!entry.name.endsWith('.md')) continue
       const meta = await readMarkdownMeta(full, issues)
       const name = readString(meta, 'name') ?? basename(entry.name, '.md')
-      const denied = toggles.agentsDenied.has(name)
       out.push({
         kind: 'agent',
         name,
@@ -282,13 +261,11 @@ async function scanAgents(
         description: readString(meta, 'description'),
         tools: readStringList(meta, 'tools'),
         model: readString(meta, 'model'),
-        // permissions.deny 의 Agent(name) 은 플러그인 제공 에이전트에도 적용된다.
-        toggle: { mechanism: 'permissionsDeny', enabled: !denied },
+        toggle: cannotToggle(NO_TOGGLE_REASONS.agent),
         remove:
           scope === 'plugin'
             ? cannotRemove(NO_REMOVE_REASONS.pluginProvided)
-            : trashable(full),
-        disabled: denied
+            : trashable(full)
       })
     }
   }
@@ -526,7 +503,7 @@ async function scanPlugins(
     const provided = await Promise.all([
       scanSkills(install.installPath, 'plugin', issues, toggles, id),
       scanCommands(install.installPath, 'plugin', issues, id),
-      scanAgents(install.installPath, 'plugin', issues, toggles)
+      scanAgents(install.installPath, 'plugin', issues)
     ])
     const [pSkills, pCommands, pAgents] = provided
     skills.push(...pSkills)
@@ -619,7 +596,7 @@ export async function scanInventory(project?: ProjectRef | null): Promise<Invent
 
   const [userSkills, userAgents, userCommands, pluginResult] = await Promise.all([
     scanSkills(userRoot, 'user', issues, toggles),
-    scanAgents(userRoot, 'user', issues, toggles),
+    scanAgents(userRoot, 'user', issues),
     scanCommands(userRoot, 'user', issues),
     scanPlugins(userRoot, userSettings, issues, toggles)
   ])
@@ -631,43 +608,8 @@ export async function scanInventory(project?: ProjectRef | null): Promise<Invent
   )
   const userHooks = extractHooks(userSettings, 'user', join(userRoot, 'settings.json'))
 
-  // 권한 규칙과 마켓플레이스. 레이어가 셋이고(전역 · 프로젝트 · 프로젝트 로컬)
-  // 어느 파일에서 온 규칙인지가 핵심 정보라 합치지 않고 따로 읽는다.
-  const userSettingsPath = join(userRoot, 'settings.json')
-  const projectSettingsFile = projectRoot ? join(projectRoot, 'settings.json') : null
-  const projectLocalFile = projectRoot ? join(projectRoot, 'settings.local.json') : null
-
-  const [projectSettingsForPerms, projectLocalForPerms] = await Promise.all([
-    projectSettingsFile
-      ? readJson<Record<string, unknown>>(projectSettingsFile, issues)
-      : Promise.resolve(null),
-    projectLocalFile
-      ? readJson<Record<string, unknown>>(projectLocalFile, issues)
-      : Promise.resolve(null)
-  ])
-
-  const { assets: permissionAssets, summary: permissionSummary } = collectPermissions([
-    { layer: 'user', path: userSettingsPath, settings: userSettings },
-    ...(projectSettingsFile
-      ? ([
-          {
-            layer: 'project' as const,
-            path: projectSettingsFile,
-            settings: projectSettingsForPerms
-          }
-        ] as const)
-      : []),
-    ...(projectLocalFile
-      ? ([
-          {
-            layer: 'local' as const,
-            path: projectLocalFile,
-            settings: projectLocalForPerms
-          }
-        ] as const)
-      : [])
-  ])
-
+  // 마켓플레이스. 레지스트리를 기준으로 읽는다 — settings 의
+  // extraKnownMarketplaces 보다 항목이 많고 설치 위치와 갱신 시각이 있다.
   const registryPath = join(userRoot, 'plugins', 'known_marketplaces.json')
   const marketplaces = collectMarketplaces(
     await readJson<Record<string, unknown>>(registryPath, issues),
@@ -694,7 +636,7 @@ export async function scanInventory(project?: ProjectRef | null): Promise<Invent
 
     ;[projectSkills, projectAgents, projectCommands] = await Promise.all([
       scanSkills(projectRoot, 'project', issues, toggles),
-      scanAgents(projectRoot, 'project', issues, toggles),
+      scanAgents(projectRoot, 'project', issues),
       scanCommands(projectRoot, 'project', issues)
     ])
     projectHooks = extractHooks(projectSettings, 'project', projectSettingsPath)
@@ -722,9 +664,7 @@ export async function scanInventory(project?: ProjectRef | null): Promise<Invent
     hooks: [...projectHooks, ...userHooks],
     plugins: pluginResult.plugins,
     mcp: markConflicts([...projectMcp, ...userMcp]),
-    permissions: permissionAssets,
     marketplaces,
-    permissionSummary,
     issues: issues.items
   }
 }
