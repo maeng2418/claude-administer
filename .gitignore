@@ -217,6 +217,10 @@ secret-*.*
 .moai/evolution/telemetry/*.jsonl
 !.moai/evolution/telemetry/.gitkeep
 
+# 세션별 추적 로그 — 매 턴 갱신되므로 추적하지 않는다.
+.moai/logs/*
+!.moai/logs/.gitkeep
+
 # ===========================================
 # Node.js (for docs/Nextra)
 # ===========================================
