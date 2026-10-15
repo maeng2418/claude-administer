@@ -989,6 +989,10 @@ body {
 }
 
 .banner {
+  /* 본문과 닫기 버튼을 한 줄에. 버튼은 오른쪽 끝에 고정된다. */
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
   margin: 10px 16px;
   padding: 9px 12px;
   border: 1px solid var(--warn);
@@ -996,6 +1000,45 @@ body {
   background: color-mix(in srgb, var(--warn) 10%, transparent);
   color: var(--text);
   font-size: 12px;
+}
+
+/*
+  본문만 늘어나고 줄어든다. min-width:0 이 없으면 긴 경로 한 덩어리가
+  플렉스 항목의 최소 너비를 밀어올려 닫기 버튼을 화면 밖으로 밀어낸다 —
+  백업 경로가 길어서 실제로 걸린다.
+*/
+.banner-body {
+  flex: 1;
+  min-width: 0;
+  /* 공백 없는 긴 경로도 칸 안에서 접히게 한다. */
+  overflow-wrap: anywhere;
+}
+
+/*
+  닫기 버튼은 배너 안에 얹히는 것이라 테두리와 배경을 지운다 —
+  배너 안에 또 하나의 상자가 생기면 무엇이 눌리는 것인지 흐려진다.
+*/
+.banner-close {
+  flex: none;
+  padding: 1px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-dim);
+}
+
+.banner-close:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+  color: var(--text);
+}
+
+/*
+  탭을 설명하는 한 줄. 알림이 아니므로 배너처럼 테두리로 가두지 않고,
+  목록 위에 흐리게 둔다. 좌우 여백은 배너와 맞춰 글이 같은 선에서 시작하게 한다.
+*/
+.content-note {
+  margin: 10px 16px 0;
+  color: var(--text-dim);
+  font-size: 11px;
 }
 
 .banner-error {

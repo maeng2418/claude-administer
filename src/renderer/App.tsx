@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AddMarketplace } from './components/AddMarketplace.js'
 import { AddPlugin } from './components/AddPlugin.js'
+import { Banner } from './components/Banner.js'
 import { GroupedList } from './components/GroupedList.js'
 import { PlusIcon, RefreshIcon } from './components/Icons.js'
 import { ProjectManager } from './components/ProjectManager.js'
@@ -74,6 +75,14 @@ export function App(): React.JSX.Element {
   /** 꺼진 자산만 보기. 검색과 함께 걸린다(둘 다 만족하는 것만 남는다). */
   const [offOnly, setOffOnly] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
+  /**
+   * 읽기 실패 경고를 닫았는지.
+   *
+   * notice 와 달리 이 내용은 inventory 안에 있어서 지울 수가 없다. 닫힘
+   * 여부를 따로 들고 있다가, 다시 스캔하면 푼다 — 새 스캔은 새 소식이고,
+   * 한 번 닫았다고 다음 실패까지 묻어버리면 문제를 놓친다.
+   */
+  const [issuesClosed, setIssuesClosed] = useState(false)
 
   const [projects, setProjects] = useState<ProjectRef[]>([])
   const [hiddenProjects, setHiddenProjects] = useState<ProjectRef[]>([])
@@ -96,6 +105,7 @@ export function App(): React.JSX.Element {
   const scan = useCallback(async (projectPath: string | null) => {
     setLoading(true)
     setLoadError(null)
+    setIssuesClosed(false)
     try {
       setInventory(await window.api.scan(projectPath))
     } catch (err) {
@@ -762,33 +772,38 @@ export function App(): React.JSX.Element {
             </div>
           )}
 
-          {notice && (
-            <div className="banner" role="status">
-              {notice}
-            </div>
-          )}
+          {notice && <Banner onClose={() => setNotice(null)}>{notice}</Banner>}
 
           {loadError && (
-            <div className="banner banner-error" role="alert">
+            <Banner tone="error" role="alert" onClose={() => setLoadError(null)}>
               스캔 실패: {loadError}
-            </div>
+            </Banner>
           )}
 
-          {inventory && inventory.issues.length > 0 && (
-            <details className="banner">
-              <summary>읽지 못한 파일 {inventory.issues.length}건 (나머지는 정상 표시됩니다)</summary>
-              <ul>
-                {inventory.issues.slice(0, 20).map((issue) => (
-                  <li key={issue.path}>
-                    {issue.path} — {issue.message}
-                  </li>
-                ))}
-              </ul>
-            </details>
+          {inventory && inventory.issues.length > 0 && !issuesClosed && (
+            <Banner onClose={() => setIssuesClosed(true)}>
+              <details>
+                <summary>
+                  읽지 못한 파일 {inventory.issues.length}건 (나머지는 정상 표시됩니다)
+                </summary>
+                <ul>
+                  {inventory.issues.slice(0, 20).map((issue) => (
+                    <li key={issue.path}>
+                      {issue.path} — {issue.message}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            </Banner>
           )}
 
+          {/*
+            탭 설명. 작업 결과가 아니라 늘 참인 사실이라 배너로 두지 않는다 —
+            배너는 닫을 수 있어야 하는데, 이건 닫으면 되살릴 방법이 없다.
+            목록 위에 흐린 작은 글씨로 두어 필요할 때 읽히되 알림과 섞이지 않게 한다.
+          */}
           {tab === 'marketplace' && inventory && (
-            <div className="banner">
+            <div className="content-note">
               레지스트리 {inventory.marketplaces.length}곳 · 설치된 플러그인{' '}
               {inventory.plugins.length}개. 플러그인 0개인 출처는 등록만 되어 있고 쓰이지
               않습니다.

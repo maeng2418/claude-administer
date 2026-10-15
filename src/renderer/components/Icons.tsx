@@ -100,3 +100,12 @@ export function UpdateIcon(): React.JSX.Element {
     </svg>
   )
 }
+
+/** 엑스. 배너를 닫는 버튼에 쓴다. */
+export function CloseIcon(): React.JSX.Element {
+  return (
+    <svg {...BASE}>
+      <path d="m4 4 8 8M12 4l-8 8" />
+    </svg>
+  )
+}
