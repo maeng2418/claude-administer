@@ -1,8 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { GroupedList } from './components/GroupedList.js'
+import { RefreshIcon } from './components/Icons.js'
 import { ProjectManager } from './components/ProjectManager.js'
 import { ProjectPicker } from './components/ProjectPicker.js'
-import type { Asset, AssetKind, Inventory, ProjectRef } from '../shared/types.js'
+import { UsagePanel } from './components/UsagePanel.js'
+import type {
+  Asset,
+  AssetKind,
+  Inventory,
+  ProjectRef,
+  UsageReadResult
+} from '../shared/types.js'
 
 /** 사이드바 탭 정의. 순서가 화면 순서다. */
 const TABS: { kind: AssetKind; label: string; field: keyof Inventory }[] = [
@@ -73,6 +81,10 @@ export function App(): React.JSX.Element {
   /** 프로젝트 관리 창이 열려 있는지. */
   const [managing, setManaging] = useState(false)
 
+  /** 구독 사용량. 아직 안 읽었으면 null — 패널이 자리만 비워둔다. */
+  const [usage, setUsage] = useState<UsageReadResult | null>(null)
+  const [usageLoading, setUsageLoading] = useState(false)
+
   /** 자산을 다시 읽는다. 프로젝트 경로가 null 이면 전역만 읽는다. */
   const scan = useCallback(async (projectPath: string | null) => {
     setLoading(true)
@@ -108,6 +120,30 @@ export function App(): React.JSX.Element {
     }
   }, [])
 
+  /**
+   * 사용량을 다시 읽는다.
+   *
+   * 스캔과 분리한 이유는 서로 상관이 없기 때문이다 — 사용량은 프로젝트와
+   * 무관하고, 읽기 실패가 자산 목록을 가려서는 안 된다. 실패는 패널 안에서
+   * 말한다(상단 배너를 쓰지 않는다).
+   */
+  const loadUsage = useCallback(async (silent = false) => {
+    // 자동 갱신은 조용히 돈다. 1분마다 "읽는 중…" 이 깜빡이면 가만히 있는
+    // 화면이 분주해 보이고, 사용자가 누르지 않은 동작이라 보고할 것도 없다.
+    if (!silent) setUsageLoading(true)
+    try {
+      setUsage(await window.api.readUsage())
+    } catch (err) {
+      setUsage({
+        ok: false,
+        reason: 'network',
+        error: err instanceof Error ? err.message : String(err)
+      })
+    } finally {
+      if (!silent) setUsageLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     void (async () => {
       const last = await loadProjects()
@@ -117,6 +153,52 @@ export function App(): React.JSX.Element {
   }, [loadProjects, scan])
 
   /**
+   * 사용량 자동 갱신.
+   *
+   * 창이 보일 때만 돈다. 가려져 있는 동안의 요청은 아무도 읽지 않는 숫자를
+   * 가져오는 일이라 그냥 낭비다 — 다시 보이는 순간 한 번 당겨오면 화면은
+   * 어차피 최신이 된다.
+   *
+   * 조회는 읽기 전용이라 구독 사용량을 쓰지 않는다. 그래서 주기를 짧게
+   * 둘 수 있지만, 숫자가 분 단위로 움직이므로 1분이면 충분하다.
+   */
+  useEffect(() => {
+    let timer: ReturnType<typeof setInterval> | null = null
+
+    const stop = (): void => {
+      if (timer !== null) {
+        clearInterval(timer)
+        timer = null
+      }
+    }
+
+    const start = (): void => {
+      if (timer !== null) return
+      timer = setInterval(() => void loadUsage(true), 60_000)
+    }
+
+    const onVisibility = (): void => {
+      if (document.hidden) {
+        stop()
+        return
+      }
+      // 가려져 있던 동안 값이 묵었다. 재개 전에 한 번 당겨온다.
+      void loadUsage(true)
+      start()
+    }
+
+    // 첫 조회는 사용자가 기다리는 상황이라 로딩 표시를 보여준다.
+    void loadUsage()
+    if (!document.hidden) start()
+    document.addEventListener('visibilitychange', onVisibility)
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      stop()
+    }
+  }, [loadUsage])
+
+  /**
    * 화면 전체를 최신으로. 자산뿐 아니라 프로젝트 목록도 다시 훑는다 —
    * 앱을 띄운 뒤 다른 프로젝트에서 Claude Code 를 쓰면 그 프로젝트가
    * 세션 기록에 새로 생기기 때문이다.
@@ -124,7 +206,8 @@ export function App(): React.JSX.Element {
   const refreshAll = useCallback(async () => {
     await loadProjects(true)
     await scan(selected)
-  }, [loadProjects, scan, selected])
+    await loadUsage()
+  }, [loadProjects, loadUsage, scan, selected])
 
   const handleSelect = useCallback(
     async (path: string | null) => {
@@ -400,6 +483,17 @@ export function App(): React.JSX.Element {
               </div>
             ))}
 
+          {/*
+            사용량: 상태(위)와 맥락(아래) 사이. 조치할 수 있는 항목은 아니지만
+            자산 경로처럼 늘 그대로인 사실도 아니다 — 시간에 따라 변하고
+            넘치기 전에 알아차려야 하므로 묻히지 않는 자리에 둔다.
+          */}
+          <UsagePanel
+            usage={usage}
+            loading={usageLoading}
+            onRefresh={() => void loadUsage()}
+          />
+
           {/* 맥락: 읽기만 하는 사실들. 서로 붙이고 한 단계 흐리게 둔다. */}
           <div className="foot-facts">
             {stats && (
@@ -456,14 +550,23 @@ export function App(): React.JSX.Element {
             onChange={(e) => setQuery(e.target.value)}
             aria-label={`${activeTab.label} 검색`}
           />
+          {/*
+            검색창에서 떼어 오른쪽 끝에 둔다. 이 버튼이 하는 일은 검색 범위를
+            넘어선다 — 프로젝트 목록, 자산 스캔, 사용량을 모두 다시 읽는다.
+            검색창에 붙여두면 "검색 결과를 새로 고친다"로 읽힌다.
+
+            아이콘만 두는 이유는 뜻이 보편적이고 title/aria-label 이 이름을
+            말해주기 때문이다 — 아이콘 자체는 장식이다.
+          */}
           <button
             type="button"
-            className="btn"
+            className="btn btn-icon btn-icon-lg toolbar-end"
             onClick={() => void refreshAll()}
             disabled={loading}
-            title="자산과 프로젝트 목록을 모두 다시 읽습니다"
+            title="프로젝트 목록, 자산, 사용량을 모두 다시 읽습니다"
+            aria-label="다시 읽기"
           >
-            {loading ? '읽는 중…' : '다시 읽기'}
+            {loading ? <span className="btn-spin" /> : <RefreshIcon />}
           </button>
         </div>
 

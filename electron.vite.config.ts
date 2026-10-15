@@ -23,6 +23,16 @@ export default defineConfig({
     root: resolve('src/renderer'),
     plugins: [react()],
     resolve: { alias: { '@shared': resolve('src/shared') } },
-    build: { rollupOptions: { input: { index: resolve('src/renderer/index.html') } } }
+    build: {
+      rollupOptions: {
+        // 화면이 둘이다: 설정 창(index)과 메뉴바 팝오버(popover).
+        // 서로 다른 창에 로드되므로 진입점을 나눈다 — 하나로 합치면
+        // 팝오버가 설정 화면의 React 트리까지 통째로 읽는다.
+        input: {
+          index: resolve('src/renderer/index.html'),
+          popover: resolve('src/renderer/popover.html')
+        }
+      }
+    }
   }
 })

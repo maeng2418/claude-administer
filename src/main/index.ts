@@ -4,6 +4,9 @@ import { scanInventory, userClaudeRoot } from './scanner.js'
 import { ProjectRegistry, storePathFor } from './projects.js'
 import { toggleAsset } from './settings.js'
 import { removeAsset } from './remove.js'
+import { readUsage } from './usage.js'
+import { createTray, destroyTray } from './tray.js'
+import { destroyPopover, hidePopover, preparePopover, resizePopoverTo } from './popover.js'
 import type {
   Inventory,
   ProjectListResult,
@@ -13,7 +16,8 @@ import type {
   RemoveResult,
   ToggleMechanism,
   ToggleRequest,
-  ToggleResult
+  ToggleResult,
+  UsageReadResult
 } from '../shared/types.js'
 
 /**
@@ -38,7 +42,33 @@ function projects(): ProjectRegistry {
   return registry
 }
 
-function createWindow(): void {
+/**
+ * 창은 하나뿐이고, 닫혀도 파괴하지 않고 숨긴다.
+ *
+ * 다시 열 때 새로 만들지 않는 이유는 비용이다 — 렌더러를 다시 띄우면
+ * 프로젝트 목록과 사용량을 처음부터 다시 읽어야 한다. 숨겨둔 창을
+ * 보여주면 마지막으로 보던 화면이 그대로 돌아온다.
+ */
+let mainWindow: BrowserWindow | null = null
+
+/**
+ * 진짜 종료 중인지.
+ *
+ * 창의 close 이벤트만으로는 "사용자가 닫기 버튼을 눌렀다" 와
+ * "앱이 종료되는 중이라 창도 닫힌다" 를 구분할 수 없다. 전자는 숨기고
+ * 후자는 통과시켜야 하므로, before-quit 에서 이 깃발을 올린다.
+ */
+let quitting = false
+
+/**
+ * 창을 만든다.
+ *
+ * @param reveal 준비되면 화면에 띄울지. 앱 시작 때는 false — 트레이에만
+ *   올라가 있어야 하고, 창은 "설정" 을 누를 때까지 숨은 채로 미리 준비된다.
+ *   미리 만들어 두는 이유는 체감 속도다: 렌더러 로드와 첫 스캔을 시작
+ *   시점에 끝내 두면 "설정" 을 눌렀을 때 바로 내용이 있는 창이 뜬다.
+ */
+function createWindow(reveal: boolean): BrowserWindow {
   const window = new BrowserWindow({
     width: 1180,
     height: 780,
@@ -57,7 +87,19 @@ function createWindow(): void {
   })
 
   // 흰 화면 깜빡임을 막기 위해 렌더가 준비된 뒤 보여준다.
-  window.once('ready-to-show', () => window.show())
+  // reveal 이 false 면 준비만 하고 띄우지 않는다 — showWindow() 가 띄운다.
+  if (reveal) window.once('ready-to-show', () => window.show())
+
+  /*
+    닫기는 종료가 아니라 숨기기다. 트레이에 남아 있다가 "설정" 으로 돌아온다.
+    preventDefault 를 하지 않으면 창이 파괴되고, 그러면 숨겨둔 상태를
+    되살릴 수 없다.
+  */
+  window.on('close', (event) => {
+    if (quitting) return
+    event.preventDefault()
+    window.hide()
+  })
 
   // 외부 링크는 앱 안에서 열지 않고 기본 브라우저로 넘긴다.
   window.webContents.setWindowOpenHandler(({ url }) => {
@@ -70,6 +112,40 @@ function createWindow(): void {
     void window.loadURL(devUrl)
   } else {
     void window.loadFile(join(import.meta.dirname, '../renderer/index.html'))
+  }
+
+  mainWindow = window
+  return window
+}
+
+/**
+ * 창을 앞으로 가져온다. 트레이의 "설정" 과 Dock 클릭이 모두 이 길을 쓴다.
+ *
+ * 숨겨진 창이 있으면 되살리고, 파괴됐으면(드문 경우) 다시 만든다.
+ *
+ * 아직 렌더가 끝나지 않은 창일 수 있다 — 시작 직후 "설정" 을 누른 경우다.
+ * 그때 바로 show() 하면 흰 화면이 번쩍이므로 ready-to-show 를 기다린다.
+ */
+function showWindow(): void {
+  const window =
+    mainWindow && !mainWindow.isDestroyed() ? mainWindow : createWindow(false)
+
+  const reveal = (): void => {
+    if (window.isDestroyed()) return
+    if (window.isMinimized()) window.restore()
+    window.show()
+    window.focus()
+    // Dock 을 숨긴 상태에서는 창을 show 해도 앱이 활성화되지 않는다.
+    // 이 호출 없이는 창이 다른 앱 뒤에 뜬다.
+    app.focus({ steal: true })
+  }
+
+  // webContents.isLoading() 으로 판단하지 않는 이유: 로드가 끝나도
+  // 첫 프레임 전일 수 있다. ready-to-show 가 그 시점을 정확히 알려준다.
+  if (window.webContents.isLoadingMainFrame()) {
+    window.once('ready-to-show', reveal)
+  } else {
+    reveal()
   }
 }
 
@@ -298,6 +374,29 @@ function registerHandlers(): void {
     }
   )
 
+  // 사용량은 읽기만 한다. 인자가 없으므로 검사할 것도 없다.
+  ipcMain.handle('admin:readUsage', async (): Promise<UsageReadResult> => readUsage())
+
+  /*
+    메뉴바 팝오버의 두 버튼. 팝오버를 먼저 치우는 이유는 순서다 —
+    설정 창이 올라오면 팝오버가 포커스를 잃어 어차피 닫히지만, 그
+    찰나에 두 판이 겹쳐 보인다.
+  */
+  ipcMain.handle('admin:openSettings', (): void => {
+    hidePopover()
+    showWindow()
+  })
+
+  ipcMain.handle('admin:quitApp', (): void => {
+    hidePopover()
+    app.quit()
+  })
+
+  // 팝오버가 자기 내용 높이를 알려온다. 응답이 없으므로 on 으로 받는다.
+  ipcMain.on('popover:resize', (_event, height: unknown): void => {
+    if (typeof height === 'number') resizePopoverTo(height)
+  })
+
   ipcMain.handle(
     'admin:revealPath',
     async (_event, target: unknown): Promise<{ ok: boolean; error?: string }> => {
@@ -312,14 +411,51 @@ function registerHandlers(): void {
 
 void app.whenReady().then(() => {
   registerHandlers()
-  createWindow()
 
-  // macOS 관례: Dock 아이콘 클릭 시 창이 없으면 다시 만든다.
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
-  })
+  /*
+    메뉴바 상주로 전환한다.
+
+    순서가 중요하다: 트레이를 먼저 띄우고, 성공했을 때만 Dock 을 숨긴다.
+    반대로 하면 트레이 생성이 실패한 순간 앱을 되살릴 창구가 하나도
+    남지 않는다 — Dock 도 없고 트레이도 없는 유령 프로세스가 된다.
+  */
+  const trayed = createTray()
+  if (trayed) {
+    app.dock?.hide()
+    // 첫 클릭이 빠르도록 팝오버를 미리 띄워 둔다(보이지는 않는다).
+    preparePopover()
+  }
+
+  /*
+    창은 미리 만들지만 띄우지는 않는다. 시작 시 보이는 것은 메뉴바
+    아이콘뿐이고, 창은 "설정" 을 눌렀을 때 나온다.
+
+    트레이를 못 띄웠다면 이야기가 다르다 — 그때는 창이 유일한 접근
+    경로이므로 바로 보여주어야 한다. 그러지 않으면 보이는 것도 없고
+    누를 것도 없는 앱이 된다.
+  */
+  createWindow(!trayed)
+
+  // Dock 을 숨기면 거의 오지 않지만, 숨김이 실패했거나 사용자가 Dock 에
+  // 남긴 경우를 위해 남겨둔다. 창을 새로 만들지 않고 숨겨둔 것을 되살린다.
+  app.on('activate', () => showWindow())
 })
 
-// macOS 에서는 창을 닫아도 앱이 살아있는 것이 관례지만,
-// 이 도구는 창이 전부라 같이 종료한다.
-app.on('window-all-closed', () => app.quit())
+/*
+  창을 모두 닫아도 종료하지 않는다 — 트레이에 남는 것이 이 앱의 기본 상태다.
+  종료는 트레이의 "종료" 항목과 창이 떠 있을 때의 Cmd+Q 로만 일어난다.
+*/
+app.on('window-all-closed', () => {
+  // 의도적으로 비워 둔다. app.quit() 을 부르면 닫기가 곧 종료가 된다.
+})
+
+// 종료가 시작됐음을 창의 close 핸들러에 알린다 — 이 깃발이 없으면
+// close 가 계속 숨기기로 가로채 앱이 영원히 종료되지 않는다.
+app.on('before-quit', () => {
+  quitting = true
+})
+
+app.on('will-quit', () => {
+  destroyTray()
+  destroyPopover()
+})

@@ -46,6 +46,21 @@ export function ExternalLinkIcon(): React.JSX.Element {
   )
 }
 
+/**
+ * 다시 읽기. 시계 방향 화살표 두 개.
+ *
+ * 원을 한 바퀴 그리지 않고 양 끝을 띄우는 이유는, 끊긴 자리에 화살촉이
+ * 들어가 "돌아간다"는 뜻이 읽히기 때문이다. 닫힌 원은 그냥 동그라미다.
+ */
+export function RefreshIcon(): React.JSX.Element {
+  return (
+    <svg {...BASE}>
+      <path d="M13.5 7a5.5 5.5 0 1 0-1.2 4.2" />
+      <path d="M13.5 3v4h-4" />
+    </svg>
+  )
+}
+
 /** Finder 에서 보기. 폴더 모양. */
 export function FolderIcon(): React.JSX.Element {
   return (

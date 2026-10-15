@@ -22,7 +22,12 @@ mem.prof
 # ===========================================
 # Build Artifacts & Distribution
 # ===========================================
-build/
+# build/ 는 통째로 제외하지 않고 내용만 막는다. 디렉토리를 `build/` 로
+# 제외하면 git 이 그 안을 아예 들여다보지 않아 `!` 예외가 먹지 않는다.
+# icon.png 는 산출물이 아니라 electron-builder 가 앱 아이콘으로 읽는
+# 소스 자산이므로 추적한다. (트레이 아이콘은 resources/ 에 있다.)
+build/*
+!build/icon.png
 dist/
 *.egg-info/
 *.egg

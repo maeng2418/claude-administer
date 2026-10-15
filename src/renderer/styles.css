@@ -300,6 +300,76 @@ body {
   line-height: 1;
 }
 
+/*
+  도구막대 오른쪽 끝으로 미는 요소.
+
+  빈 div 를 끼워 넣는 대신 왼쪽 여백을 늘려 민다 — DOM 에 의미 없는 요소를
+  더하지 않고, 창 너비가 바뀌어도 늘 끝에 붙어있다.
+*/
+.toolbar-end {
+  margin-left: auto;
+}
+
+/*
+  큰 아이콘 버튼. 검색창과 높이를 맞춘다 — 나란히 놓았을 때 위아래가
+  어긋나면 둘이 한 줄로 읽히지 않는다.
+
+  높이를 고정값으로 박지 않고 검색창과 같은 규칙(패딩 + 테두리 + 줄높이)으로
+  계산되게 둔다. 고정값은 글꼴이 바뀌면 어긋나고, 실제로 31px 로 박았을 때
+  검색창(33.5px)과 2.5px 차이가 났다.
+*/
+.btn-icon-lg {
+  width: 34px;
+  height: auto;
+  padding: 6px 0;
+  line-height: 1.5;
+}
+
+/*
+  아이콘 높이를 줄높이(1.5em)와 같게 둔다. 이보다 작으면 그만큼 버튼이
+  줄어 검색창과 어긋난다 — 18px 로 두었을 때 1.5px 짧았다.
+  그려지는 획은 viewBox 안쪽에 있어 실제로 보이는 크기는 이보다 작다.
+*/
+.btn-icon-lg .icon {
+  width: 1.5em;
+  height: 1.5em;
+}
+
+/*
+  읽는 중 표시. 아이콘과 같은 크기라 버튼이 들썩이지 않는다.
+  테두리 한 변만 색을 빼 회전시키면 도는 것이 보인다.
+*/
+.btn-spin {
+  width: 11px;
+  height: 11px;
+  border: 1.5px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: btn-spin 0.7s linear infinite;
+}
+
+/* 큰 버튼에서는 스피너도 아이콘 크기를 따라간다. */
+.btn-icon-lg .btn-spin {
+  width: 14px;
+  height: 14px;
+}
+
+@keyframes btn-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/*
+  움직임을 줄이는 설정에서는 돌리지 않는다. 멈춘 원이라도 "뭔가 진행 중"은
+  읽히고, 버튼은 어차피 비활성이라 상태가 전달된다.
+*/
+@media (prefers-reduced-motion: reduce) {
+  .btn-spin {
+    animation: none;
+  }
+}
+
 /* ---- 토글 스위치 ---- */
 .switch {
   display: inline-flex;
@@ -565,6 +635,112 @@ body {
 .foot-warn .foot-value {
   color: var(--warn);
   font-weight: 600;
+}
+
+/* ---- 사용량 ---- */
+/*
+  상태와 맥락 사이에 끼는 영역. 위아래 묶음과 섞이지 않도록 옅은 구분선을
+  두되, 테두리로 상자를 만들지는 않는다 — 사이드바에 상자가 하나 더 생기면
+  시선이 그쪽으로 끌린다.
+*/
+.usage {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 9px;
+  border-top: 1px solid var(--border);
+}
+
+.usage-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 0 6px;
+}
+
+/* 라벨과 퍼센트는 foot-row 와 같은 축을 쓴다 — 눈이 같은 줄을 따라간다. */
+.usage-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.usage-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--bg-hover);
+  overflow: hidden;
+}
+
+/*
+  기본은 강조색. 색만으로 판단하게 두지 않으려고 퍼센트를 항상 위에 띄운다.
+  70%/90% 에서 색이 바뀌는 것은 보조 신호일 뿐이다.
+*/
+.usage-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+
+.usage-fill.is-warn {
+  background: var(--warn);
+}
+
+.usage-fill.is-danger {
+  background: var(--danger);
+}
+
+.usage-reset {
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-hint {
+  padding: 0 6px;
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--text-faint);
+}
+
+.usage-install {
+  margin: 0 6px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg-hover);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.usage-install:hover:not(:disabled) {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.usage-install:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.usage-install:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .usage-fill,
+  .usage-install {
+    transition: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

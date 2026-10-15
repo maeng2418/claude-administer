@@ -274,6 +274,42 @@ export interface ProjectListResult {
   issues: ScanIssue[]
 }
 
+/**
+ * 사용량 한도 하나.
+ *
+ * Anthropic 의 /api/oauth/usage 응답 중 limits 배열 항목에 대응한다.
+ * 이 배열을 쓰는 이유는 모델별 한도의 이름이 여기에만 있기 때문이다 —
+ * 최상위 five_hour / seven_day 에는 "Fable" 같은 이름이 없다.
+ */
+export interface UsageLimit {
+  /** session / weekly_all / weekly_scoped 등. 같은 kind 가 여럿일 수 있다. */
+  kind: string
+  /** 0~100. Anthropic 이 계산한 값을 그대로 쓴다. */
+  percent: number
+  /** 재설정 시각 (ISO 문자열). 알 수 없으면 null. */
+  resetsAt: string | null
+  /** 모델별 한도의 이름 (예: "Fable"). 전체 한도에는 없다. */
+  scopeLabel: string | null
+  /** normal / warning 등 서버가 매긴 심각도. 참고용이며 색은 percent 로 정한다. */
+  severity: string | null
+}
+
+/** 조회한 사용량 한 벌. */
+export interface UsageSnapshot {
+  /** 조회 시각 (ISO 문자열). */
+  fetchedAt: string
+  /** 응답에 있던 한도 전부. 순서는 서버가 준 그대로다. */
+  limits: UsageLimit[]
+}
+
+/** 사용량 조회가 실패한 이유. UI 가 할 말을 고르는 데 쓴다. */
+export type UsageFailureReason = 'no-token' | 'expired' | 'network' | 'http' | 'parse' | 'empty'
+
+/** 사용량 조회 결과. */
+export type UsageReadResult =
+  | { ok: true; snapshot: UsageSnapshot }
+  | { ok: false; reason: UsageFailureReason; error: string }
+
 /** renderer 가 preload 를 통해 쓸 수 있는 API. window.api 로 노출된다. */
 export interface AdminApi {
   /** @param projectPath 스캔할 프로젝트 루트. 생략하면 전역 자산만 읽는다. */
@@ -298,4 +334,25 @@ export interface AdminApi {
   /** 자산을 제거한다. 확인 대화는 main 에서 띄운다. */
   removeAsset(request: RemoveRequest): Promise<RemoveResult>
   revealPath(path: string): Promise<{ ok: boolean; error?: string }>
+  /** 구독 사용량을 지금 조회한다. Claude Code 의 로그인 정보를 그대로 쓴다. */
+  readUsage(): Promise<UsageReadResult>
+  /** 설정 창을 연다. 메뉴바 팝오버의 "설정" 이 쓴다. */
+  openSettings(): Promise<void>
+  /** 앱을 완전히 종료한다. 메뉴바 팝오버의 "종료" 가 쓴다. */
+  quitApp(): Promise<void>
+  /**
+   * 팝오버가 화면에 뜰 때마다 불린다. 닫혀 있던 동안 멈춰 있던 값을
+   * 다시 읽으라는 신호다.
+   *
+   * @returns 구독을 끊는 함수. 컴포넌트가 사라질 때 반드시 호출한다 —
+   *   하지 않으면 같은 핸들러가 겹겹이 쌓인다.
+   */
+  onPopoverShown(handler: () => void): () => void
+  /**
+   * 팝오버 내용의 높이를 알린다. main 이 창을 그 높이에 맞춘다.
+   *
+   * 창 높이를 코드에 박지 않는 이유는 한도 개수가 바뀔 수 있어서다 —
+   * 모델별 한도가 하나 늘면 줄이 하나 더 생긴다.
+   */
+  resizePopover(height: number): void
 }

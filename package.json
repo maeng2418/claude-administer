@@ -45,6 +45,12 @@
       "out/**/*",
       "package.json"
     ],
+    "extraResources": [
+      {
+        "from": "resources",
+        "to": "resources"
+      }
+    ],
     "mac": {
       "category": "public.app-category.developer-tools",
       "target": [
