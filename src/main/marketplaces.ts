@@ -72,8 +72,20 @@ function autoUpdateInfo(
     : undefined
 
   const defaultOn = DEFAULT_ON_MARKETPLACES.has(name)
-  // 레지스트리가 실제 적용 상태다. 값이 없으면 이름으로 정해지는 기본값.
-  const effective = fromRegistry ?? defaultOn
+
+  /*
+    우선순위: 사용자 settings.json > 레지스트리 > 이름으로 정해지는 기본값.
+
+    settings 를 앞에 두는 이유는 두 파일이 갱신되는 시점이 다르기 때문이다.
+    토글은 settings.json 에 쓰고, Claude Code 는 다음 실행 때 그 값을
+    레지스트리로 옮긴다. 레지스트리를 먼저 보면 방금 켠 값이 아직 거기
+    없어서, 쓰기가 성공했는데도 스위치가 꺼진 채로 되돌아온다.
+
+    settings 에 없을 때만 레지스트리를 본다 — 그 값은 다른 프로젝트나
+    관리자 설정이 선언한 것이고, 그쪽은 우리가 쓰지 않으므로 레지스트리가
+    유일한 단서다.
+  */
+  const effective = fromSettings ?? fromRegistry ?? defaultOn
 
   // 내 settings.json 에 적힌 값만 '선언' 으로 본다.
   const declared = fromSettings === undefined ? 'default' : fromSettings ? 'on' : 'off'
