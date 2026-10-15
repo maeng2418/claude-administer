@@ -1,5 +1,5 @@
 import { ConflictBadge, OffBadge, ScopeBadge } from './Badges.js'
-import { DownloadIcon, ExternalLinkIcon, FolderIcon, TrashIcon } from './Icons.js'
+import { ExternalLinkIcon, FolderIcon, TrashIcon, UpdateIcon } from './Icons.js'
 import type { Asset, MarketplaceAsset } from '../../shared/types.js'
 
 /** 한 자산을 한 줄로 그린다. 종류별로 다른 보조 정보를 덧붙인다. */
@@ -85,7 +85,7 @@ export function AssetRow({
             }
             aria-label={`${asset.name} 지금 갱신`}
           >
-            {busy ? '…' : <DownloadIcon />}
+            {busy ? '…' : <UpdateIcon />}
           </button>
         )}
         {asset.kind === 'marketplace' &&

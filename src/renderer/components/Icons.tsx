@@ -79,12 +79,24 @@ export function PlusIcon(): React.JSX.Element {
   )
 }
 
-/** 아래 화살표. 설치·갱신 버튼에 쓴다. */
-export function DownloadIcon(): React.JSX.Element {
+/**
+ * 두 개의 호가 도는 모양. '지금 갱신' 버튼에 쓴다.
+ *
+ * 아래 화살표(내려받기 모양)를 쓰지 않는 이유: 그 글자는 보편적으로
+ * "파일을 받는다" 로 읽혀서, 하는 일(최신 버전으로 올린다)과 어긋난다.
+ *
+ * RefreshIcon 과도 구분한다. 그쪽은 호가 하나이고 툴바의 '다시 읽기'
+ * 가 쓴다 — 같은 그림을 두 동작에 쓰면 어느 쪽인지 알 수 없다.
+ */
+export function UpdateIcon(): React.JSX.Element {
   return (
     <svg {...BASE}>
-      <path d="M8 2.5v7.5M5 7.5 8 10.5l3-3" />
-      <path d="M3 12.5h10" />
+      {/* 위쪽 호: 왼쪽에서 오른쪽으로 */}
+      <path d="M2.5 9a5.5 5.5 0 0 1 9.4-3.9" />
+      <path d="M13.5 2.5v3h-3" />
+      {/* 아래쪽 호: 반대 방향으로 돌아온다 */}
+      <path d="M13.5 7a5.5 5.5 0 0 1-9.4 3.9" />
+      <path d="M2.5 13.5v-3h3" />
     </svg>
   )
 }
