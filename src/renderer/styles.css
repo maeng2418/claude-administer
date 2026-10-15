@@ -795,6 +795,14 @@ body {
 }
 
 .btn {
+  /*
+    인라인 플렉스로 둔다. 아이콘(.icon 은 display:block)과 글자를 함께
+    넣으면 블록 버튼에서는 둘이 세로로 쌓여 버튼이 두 줄이 된다 —
+    옆에 선 글자만 있는 버튼보다 높아져 툴바가 들쭉날쭉해진다.
+  */
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   padding: 6px 11px;
   background: var(--bg-elev);
   border: 1px solid var(--border);
@@ -803,6 +811,15 @@ body {
   font: inherit;
   cursor: pointer;
   white-space: nowrap;
+}
+
+/*
+  버튼 안의 아이콘은 글자에 맞춰 조금 줄인다. 15px 그대로 두면 11px
+  글자 옆에서 아이콘이 더 커 보여 글자가 딸려 보인다.
+*/
+.btn .icon {
+  width: 13px;
+  height: 13px;
 }
 
 .btn:hover:not(:disabled) {
