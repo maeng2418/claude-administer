@@ -1173,3 +1173,79 @@ body {
   color: var(--text-dim);
   font-weight: 500;
 }
+
+/* ---- 마켓플레이스 자동 갱신 ---- */
+/*
+  라벨 + 스위치를 한 덩어리로 묶는다. 같은 행에 갱신·플러그인 보기 버튼이
+  있어서, 맨 스위치만 두면 무엇을 켜는 스위치인지 알 수 없다.
+*/
+.auto-update {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.auto-update-label {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+/*
+  바꿀 수 없을 때의 상태 글자. 스위치 자리를 글자가 대신 차지하므로
+  너비가 들쭉날쭉해지는데, 행 끝의 버튼들이 밀리는 것보다는 낫다 —
+  비활성 스위치를 두면 눌러도 되는 것처럼 보인다.
+*/
+.auto-update-state {
+  padding: 1px 5px;
+  background: var(--bg-hover);
+  border-radius: 4px;
+  color: var(--text-faint);
+  font-size: 10px;
+}
+
+.auto-update.is-locked {
+  /* 잠긴 상태임을 커서로도 알린다. */
+  cursor: help;
+}
+
+/* ---- 켜진 상태를 나타내는 칩 ---- */
+.chip-on {
+  background: color-mix(in srgb, var(--ok) 18%, transparent);
+  color: var(--ok);
+}
+
+/* ---- 행 안의 오류 문구 ---- */
+/*
+  설명 자리를 쓰되 색으로 구분한다. 배너로 올리면 어느 행의 실패인지
+  알 수 없다 — 목록에서 여러 개를 연달아 설치하기 때문이다.
+*/
+.row-error {
+  color: var(--danger);
+}
+
+/* ---- 추가·설치 모달 ---- */
+/*
+  검색 결과 목록이 들어가므로 기본 모달보다 넓게 둔다. 좁으면 설명이
+  두 줄로 접혀 한 화면에 보이는 결과 수가 줄어든다.
+*/
+.modal-wide {
+  width: min(820px, 100%);
+}
+
+.modal-form {
+  display: flex;
+  gap: 8px;
+  padding: 0 16px 12px;
+}
+
+.modal-input {
+  /* 모달 안에서는 검색창이 가로를 채운다. */
+  flex: 1;
+  margin: 0;
+}
+
+/* 모달 바로 안의 검색 입력은 위아래 여백을 직접 준다. */
+.modal > .modal-input {
+  margin: 0 16px 12px;
+}

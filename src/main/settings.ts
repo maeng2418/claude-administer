@@ -34,6 +34,13 @@ function settingsPath(): string {
 export interface ToggleOptions {
   /** 쓰기 대상 settings.json 경로. 생략하면 사용자 홈의 실제 파일. */
   path?: string
+  /**
+   * marketplaceAutoUpdate 전용: 항목을 새로 만들 때 쓸 source 블록.
+   *
+   * 레지스트리(known_marketplaces.json)에서 읽어 넘긴다. settings.json 에
+   * 아직 항목이 없는 마켓플레이스를 켜려면 이 값이 있어야 한다.
+   */
+  marketplaceSource?: Record<string, unknown>
 }
 
 /** 되돌릴 수 있도록 타임스탬프 백업을 만든다. 백업 경로를 돌려준다. */
@@ -131,13 +138,75 @@ function planSkillOverrides(key: string, enabled: boolean): MechanismPlan {
   }
 }
 
+/**
+ * 마켓플레이스 자동 갱신: extraKnownMarketplaces[name].autoUpdate
+ *
+ * 다른 두 메커니즘과 달리 값만 바꿔서는 안 된다. 이 항목은 source 가
+ * 있어야 유효하고(autoUpdate 만 있는 항목은 Claude Code 가 무시한다),
+ * 레지스트리에만 있고 settings.json 에는 없는 마켓플레이스가 실제로
+ * 존재한다(실측: 11곳 중 2곳). 그래서 항목이 없을 때는 호출하는 쪽이
+ * 넘겨준 source 로 완전한 항목을 새로 만든다.
+ *
+ * source 없이 없는 항목을 켜달라는 요청은 거부한다 — 무효한 항목을
+ * 남기면 사용자는 켰다고 믿는데 아무 일도 일어나지 않는다.
+ *
+ * 끌 때도 항목을 지우지 않고 autoUpdate: false 를 명시한다. 지우면
+ * 기본값으로 돌아가는데, 공식 마켓플레이스의 기본값은 '켜짐' 이라서
+ * "껐다" 가 "켜짐" 이 되는 경우가 생긴다.
+ */
+function planMarketplaceAutoUpdate(
+  key: string,
+  enabled: boolean,
+  source?: Record<string, unknown>
+): MechanismPlan {
+  return {
+    // extraKnownMarketplaces 가 아직 없는 설정도 있을 수 있다.
+    createsKey: 'extraKnownMarketplaces',
+    apply(settings) {
+      const known = objectClone(settings['extraKnownMarketplaces'])
+      const existing = known[key]
+      const entry = objectClone(existing)
+
+      if (!existing) {
+        if (!source) {
+          return {
+            ok: false,
+            error: `settings.json 에 "${key}" 항목이 없고 출처 정보도 없어 새로 만들 수 없습니다.`
+          }
+        }
+        entry['source'] = source
+      }
+
+      entry['autoUpdate'] = enabled
+      known[key] = entry
+      return { ok: true, settings: { ...settings, extraKnownMarketplaces: known } }
+    },
+    verify(settings) {
+      const known = settings['extraKnownMarketplaces']
+      if (!known || typeof known !== 'object') return false
+      const entry = (known as Record<string, unknown>)[key]
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false
+      const record = entry as Record<string, unknown>
+      // source 가 함께 남아 있는지도 본다 — 값만 맞고 source 가 없으면 무효한 항목이다.
+      return record['autoUpdate'] === enabled && record['source'] !== undefined
+    }
+  }
+}
+
 /** 요청을 변경 계획으로 바꾼다. */
-function planFor(mechanism: ToggleMechanism, key: string, enabled: boolean): MechanismPlan {
+function planFor(
+  mechanism: ToggleMechanism,
+  key: string,
+  enabled: boolean,
+  source?: Record<string, unknown>
+): MechanismPlan {
   switch (mechanism) {
     case 'enabledPlugins':
       return planEnabledPlugins(key, enabled)
     case 'skillOverrides':
       return planSkillOverrides(key, enabled)
+    case 'marketplaceAutoUpdate':
+      return planMarketplaceAutoUpdate(key, enabled, source)
   }
 }
 
@@ -190,7 +259,7 @@ export async function toggleAsset(
     }
 
     // 2. 변경 계획을 만든다. 적용 불가 사유가 있으면 쓰기 전에 멈춘다.
-    const plan = planFor(mechanism, key, enabled)
+    const plan = planFor(mechanism, key, enabled, options.marketplaceSource)
     const applied = plan.apply(settings)
     if (!applied.ok) return fail(applied.error)
     const nextSettings = applied.settings

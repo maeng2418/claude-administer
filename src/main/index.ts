@@ -4,11 +4,15 @@ import { scanInventory, userClaudeRoot } from './scanner.js'
 import { ProjectRegistry, storePathFor } from './projects.js'
 import { toggleAsset } from './settings.js'
 import { removeAsset } from './remove.js'
+import { runPluginOp } from './plugin-cli.js'
+import { collectCatalog, type CatalogTarget } from './catalog.js'
 import { readUsage } from './usage.js'
 import { createTray, destroyTray } from './tray.js'
 import { destroyPopover, hidePopover, preparePopover, resizePopoverTo } from './popover.js'
 import type {
+  CatalogResult,
   Inventory,
+  PluginOpResult,
   ProjectListResult,
   ProjectRef,
   RemoveMechanism,
@@ -19,6 +23,7 @@ import type {
   ToggleResult,
   UsageReadResult
 } from '../shared/types.js'
+import { readFile } from 'node:fs/promises'
 
 /**
  * Electron main 프로세스.
@@ -175,7 +180,38 @@ async function isAllowedPath(target: unknown): Promise<boolean> {
 }
 
 /** 토글 요청이 올바른 모양인지 검사한다. renderer 가 보낸 값은 신뢰하지 않는다. */
-const TOGGLE_MECHANISMS: ToggleMechanism[] = ['skillOverrides', 'enabledPlugins']
+const TOGGLE_MECHANISMS: ToggleMechanism[] = [
+  'skillOverrides',
+  'enabledPlugins',
+  'marketplaceAutoUpdate'
+]
+
+/**
+ * 마켓플레이스의 source 블록을 레지스트리에서 읽는다.
+ *
+ * 자동 갱신을 켜려면 settings.json 에 완전한 항목이 있어야 하고, 항목이
+ * 아직 없으면 source 를 채워 새로 만들어야 한다. 그 값을 renderer 에서
+ * 받지 않고 여기서 다시 읽는 이유는 신뢰다 — renderer 가 보낸 source 를
+ * 그대로 쓰면 임의의 저장소를 사용자 설정에 심을 수 있다.
+ */
+async function marketplaceSourceOf(
+  name: string
+): Promise<Record<string, unknown> | undefined> {
+  try {
+    const path = join(userClaudeRoot(), 'plugins', 'known_marketplaces.json')
+    const parsed = JSON.parse(await readFile(path, 'utf8')) as Record<string, unknown>
+    const entry = parsed[name]
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return undefined
+    const source = (entry as { source?: unknown }).source
+    return source && typeof source === 'object' && !Array.isArray(source)
+      ? (source as Record<string, unknown>)
+      : undefined
+  } catch {
+    // 레지스트리를 읽지 못하면 source 없이 진행한다 — 항목이 이미 있으면
+    // 성공하고, 없으면 settings.ts 가 사유를 붙여 거부한다.
+    return undefined
+  }
+}
 
 function parseToggleRequest(raw: unknown): ToggleRequest | string {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
@@ -221,6 +257,118 @@ function parseRemoveRequest(raw: unknown): RemoveRequest | string {
     target,
     label: typeof label === 'string' && label !== '' ? label : target
   }
+}
+
+/**
+ * 카탈로그 캐시. 마켓플레이스가 바뀌는 작업 뒤에 비운다.
+ *
+ * null 은 "아직 안 읽었거나 무효해졌다" 는 뜻이다. 빈 결과와 구분되어야
+ * 하므로 빈 객체를 쓰지 않는다 — 카탈로그가 실제로 비어 있을 수 있다.
+ */
+let catalogCache: CatalogResult | null = null
+
+/**
+ * 레지스트리에서 카탈로그 대상을 모아 읽는다.
+ *
+ * 설치 위치가 있는 마켓플레이스만 대상이다 — 위치가 없으면 디스크에
+ * 체크아웃되지 않았고, 읽을 카탈로그 파일도 없다.
+ */
+async function readCatalog(): Promise<CatalogResult> {
+  const root = userClaudeRoot()
+  const registryPath = join(root, 'plugins', 'known_marketplaces.json')
+  const installedPath = join(root, 'plugins', 'installed_plugins.json')
+
+  const targets: CatalogTarget[] = []
+  try {
+    const parsed = JSON.parse(await readFile(registryPath, 'utf8')) as Record<
+      string,
+      unknown
+    >
+    for (const [name, value] of Object.entries(parsed)) {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) continue
+      const location = (value as { installLocation?: unknown }).installLocation
+      if (typeof location === 'string' && location !== '') {
+        targets.push({ name, installLocation: location })
+      }
+    }
+  } catch (err) {
+    return {
+      plugins: [],
+      issues: [
+        {
+          path: registryPath,
+          message: err instanceof Error ? err.message : String(err)
+        }
+      ]
+    }
+  }
+
+  // 이미 설치된 것을 표시하려면 설치 목록이 필요하다. 없으면 빈 목록으로 간다.
+  let installedIds: string[] = []
+  try {
+    const parsed = JSON.parse(await readFile(installedPath, 'utf8')) as {
+      plugins?: Record<string, unknown>
+    }
+    if (parsed.plugins && typeof parsed.plugins === 'object') {
+      installedIds = Object.keys(parsed.plugins)
+    }
+  } catch {
+    // 설치 목록을 못 읽으면 전부 미설치로 보인다. 카탈로그 자체는 유효하다.
+  }
+
+  return collectCatalog(targets, installedIds)
+}
+
+/**
+ * 문자열 인자 검사 결과.
+ *
+ * 값과 오류를 같은 string 으로 돌려주면 둘을 구분할 수 없다 —
+ * `typeof x === 'string'` 이 항상 참이 되어 정상 입력이 오류로 처리된다.
+ * ok 플래그로 판별한다.
+ */
+type ParsedArg = { ok: true; value: string } | { ok: false; error: string }
+
+/**
+ * CLI 인자로 들어갈 문자열을 검사한다.
+ *
+ * execFile 을 쓰므로 셸을 거치지 않아 인용 문제는 없다. 그래도 세 가지를
+ * 막는다:
+ *
+ *  - 빈 값과 과도한 길이: 실수로 보낸 요청을 CLI 까지 보내지 않는다.
+ *  - 하이픈 시작: CLI 가 플래그로 읽는다. `--help` 를 출처로 넣으면
+ *    추가가 아니라 도움말이 실행된다.
+ *  - 개행과 NUL: 인자 하나가 여러 줄이 되는 입력 사고를 걸러낸다.
+ *
+ * @param label 오류 문구에 쓸 대상 이름
+ * @param limit 허용 최대 길이
+ */
+function parseCliArg(raw: unknown, label: string, limit: number): ParsedArg {
+  if (typeof raw !== 'string') return { ok: false, error: `${label} 형식이 올바르지 않습니다.` }
+  const value = raw.trim()
+  if (value === '') return { ok: false, error: `${label}을(를) 입력하세요.` }
+  if (value.length > limit) return { ok: false, error: `${label}이(가) 너무 깁니다.` }
+  if (value.startsWith('-')) {
+    return { ok: false, error: `${label}은(는) 하이픈으로 시작할 수 없습니다.` }
+  }
+  if (/[\r\n\0]/.test(value)) {
+    return { ok: false, error: `${label}에 줄바꿈을 넣을 수 없습니다.` }
+  }
+  return { ok: true, value }
+}
+
+/** 마켓플레이스 출처. owner/repo, git/https URL, 또는 경로. */
+function parseMarketplaceSource(raw: unknown): ParsedArg {
+  return parseCliArg(raw, '출처', 500)
+}
+
+/** 마켓플레이스 이름. 레지스트리 키로 쓰이는 값이다. */
+function parseMarketplaceName(raw: unknown): ParsedArg {
+  return parseCliArg(raw, '마켓플레이스 이름', 200)
+}
+
+/** 플러그인 ID. `<이름>` 또는 `<이름>@<마켓플레이스>`. */
+function parsePluginId(raw: unknown): ParsedArg {
+  return parseCliArg(raw, '플러그인 ID', 300)
 }
 
 function registerHandlers(): void {
@@ -315,6 +463,14 @@ function registerHandlers(): void {
           error: parsed
         }
       }
+      /*
+        마켓플레이스 자동 갱신만 추가 정보가 필요하다. settings.json 에
+        항목이 없을 때 source 를 채워 넣어야 유효한 선언이 된다.
+      */
+      if (parsed.mechanism === 'marketplaceAutoUpdate') {
+        const source = await marketplaceSourceOf(parsed.key)
+        return toggleAsset(parsed, source ? { marketplaceSource: source } : {})
+      }
       return toggleAsset(parsed)
     }
   )
@@ -371,6 +527,75 @@ function registerHandlers(): void {
       const result = await removeAsset(parsed)
       // 플러그인을 지웠으면 프로젝트 캐시는 그대로지만 자산 목록이 바뀐다.
       return result
+    }
+  )
+
+  /*
+    설치 가능한 플러그인 카탈로그.
+
+    캐시하는 이유: 실측 2,619개를 11개 파일에서 읽고 정렬하는 작업이고,
+    마켓플레이스를 갱신하지 않는 한 결과가 바뀌지 않는다. 모달을 여닫을
+    때마다 다시 읽을 이유가 없다.
+  */
+  ipcMain.handle(
+    'admin:listCatalog',
+    async (_event, refresh: unknown): Promise<CatalogResult> => {
+      if (refresh === true) catalogCache = null
+      if (catalogCache) return catalogCache
+      const result = await readCatalog()
+      catalogCache = result
+      return result
+    }
+  )
+
+  ipcMain.handle(
+    'admin:addMarketplace',
+    async (_event, source: unknown): Promise<PluginOpResult> => {
+      const parsed = parseMarketplaceSource(source)
+      if (!parsed.ok) return { ok: false, op: 'marketplaceAdd', error: parsed.error }
+      const result = await runPluginOp({ op: 'marketplaceAdd', source: parsed.value })
+      // 새 마켓플레이스가 붙었으면 카탈로그가 달라졌다.
+      if (result.ok) catalogCache = null
+      return result
+    }
+  )
+
+  ipcMain.handle(
+    'admin:updateMarketplace',
+    async (_event, name: unknown): Promise<PluginOpResult> => {
+      // null 이면 전체 갱신. 그 외에는 이름 모양을 검사한다.
+      if (name === null || name === undefined) {
+        const result = await runPluginOp({ op: 'marketplaceUpdateAll' })
+        if (result.ok) catalogCache = null
+        return result
+      }
+      const parsed = parseMarketplaceName(name)
+      if (!parsed.ok) return { ok: false, op: 'marketplaceUpdate', error: parsed.error }
+      const result = await runPluginOp({ op: 'marketplaceUpdate', name: parsed.value })
+      // 갱신으로 카탈로그 내용이 바뀐다(새 플러그인이 추가될 수 있다).
+      if (result.ok) catalogCache = null
+      return result
+    }
+  )
+
+  ipcMain.handle(
+    'admin:installPlugin',
+    async (_event, plugin: unknown): Promise<PluginOpResult> => {
+      const parsed = parsePluginId(plugin)
+      if (!parsed.ok) return { ok: false, op: 'pluginInstall', error: parsed.error }
+      const result = await runPluginOp({ op: 'pluginInstall', plugin: parsed.value })
+      // 설치 상태가 바뀌면 카탈로그의 installed 표시도 바뀐다.
+      if (result.ok) catalogCache = null
+      return result
+    }
+  )
+
+  ipcMain.handle(
+    'admin:updatePlugin',
+    async (_event, plugin: unknown): Promise<PluginOpResult> => {
+      const parsed = parsePluginId(plugin)
+      if (!parsed.ok) return { ok: false, op: 'pluginUpdate', error: parsed.error }
+      return runPluginOp({ op: 'pluginUpdate', plugin: parsed.value })
     }
   )
 

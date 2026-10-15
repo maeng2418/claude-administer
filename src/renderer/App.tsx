@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { AddMarketplace } from './components/AddMarketplace.js'
+import { AddPlugin } from './components/AddPlugin.js'
 import { GroupedList } from './components/GroupedList.js'
-import { RefreshIcon } from './components/Icons.js'
+import { PlusIcon, RefreshIcon } from './components/Icons.js'
 import { ProjectManager } from './components/ProjectManager.js'
 import { ProjectPicker } from './components/ProjectPicker.js'
 import { UsagePanel } from './components/UsagePanel.js'
@@ -8,6 +10,7 @@ import type {
   Asset,
   AssetKind,
   Inventory,
+  MarketplaceAsset,
   ProjectRef,
   UsageReadResult
 } from '../shared/types.js'
@@ -80,6 +83,10 @@ export function App(): React.JSX.Element {
   const [projectIssueDetail, setProjectIssueDetail] = useState<string>('')
   /** 프로젝트 관리 창이 열려 있는지. */
   const [managing, setManaging] = useState(false)
+  /** 마켓플레이스 추가 창이 열려 있는지. */
+  const [addingMarketplace, setAddingMarketplace] = useState(false)
+  /** 플러그인 설치 창이 열려 있는지. */
+  const [addingPlugin, setAddingPlugin] = useState(false)
 
   /** 구독 사용량. 아직 안 읽었으면 null — 패널이 자리만 비워둔다. */
   const [usage, setUsage] = useState<UsageReadResult | null>(null)
@@ -350,6 +357,127 @@ export function App(): React.JSX.Element {
     [scan, selected]
   )
 
+  /**
+   * 마켓플레이스 자동 갱신 켜기/끄기.
+   *
+   * 토글 메커니즘을 따로 쓰므로 handleToggle 과 합치지 않는다 — 그쪽은
+   * asset.toggle.mechanism 을 보는데, 마켓플레이스 행의 toggle 은 비어
+   * 있고(끄는 개념이 없다) 자동 갱신은 별도 키를 쓴다.
+   */
+  const handleAutoUpdate = useCallback(
+    async (asset: MarketplaceAsset, next: boolean) => {
+      setBusyKey(rowKeyFor(asset))
+      setNotice(null)
+      const result = await window.api.toggleAsset({
+        mechanism: 'marketplaceAutoUpdate',
+        key: asset.name,
+        enabled: next
+      })
+      if (result.ok) {
+        setNotice(
+          `${asset.name} 자동 갱신을 ${next ? '켰습니다' : '껐습니다'}. 백업: ${
+            result.backupPath ?? '없음'
+          } · 다음 세션부터 적용됩니다.`
+        )
+        await scan(selected)
+      } else {
+        setNotice(`자동 갱신 변경 실패: ${result.error ?? '알 수 없는 오류'}`)
+      }
+      setBusyKey(null)
+    },
+    [scan, selected]
+  )
+
+  /**
+   * 지금 갱신. 마켓플레이스면 출처에서 다시 받아오고, 플러그인이면
+   * 최신 버전으로 올린다.
+   *
+   * 결과 문구를 두 경우로 나눈다 — 플러그인 갱신은 "이미 최신" 이
+   * 실패가 아니라 정상 결과이고, 그것을 "갱신했습니다" 로 말하면
+   * 바뀌지 않았는데 바뀐 줄로 읽는다.
+   */
+  const handleUpdateNow = useCallback(
+    async (asset: Asset) => {
+      if (asset.kind !== 'marketplace' && asset.kind !== 'plugin') return
+
+      setBusyKey(rowKeyFor(asset))
+      setNotice(null)
+
+      const result =
+        asset.kind === 'marketplace'
+          ? await window.api.updateMarketplace(asset.name)
+          : await window.api.updatePlugin(asset.id)
+
+      if (!result.ok) {
+        setNotice(`갱신 실패: ${result.error ?? '알 수 없는 오류'}`)
+        setBusyKey(null)
+        return
+      }
+
+      if (result.updateOutcome === 'up_to_date') {
+        setNotice(`${asset.name} 은(는) 이미 최신입니다${
+          result.newVersion ? ` (${result.newVersion})` : ''
+        }.`)
+      } else if (result.updateOutcome === 'updated') {
+        setNotice(
+          `${asset.name} 을(를) ${result.oldVersion ?? '이전'} → ${
+            result.newVersion ?? '최신'
+          } 으로 올렸습니다. Claude Code 재시작 후 적용됩니다.`
+        )
+      } else {
+        setNotice(`${asset.name} 을(를) 갱신했습니다.`)
+      }
+
+      await scan(selected)
+      setBusyKey(null)
+    },
+    [scan, selected]
+  )
+
+  /** 마켓플레이스를 추가한다. 성공하면 목록을 다시 읽는다. */
+  const handleAddMarketplace = useCallback(
+    async (source: string) => {
+      const result = await window.api.addMarketplace(source)
+      if (result.ok) await scan(selected)
+      return result
+    },
+    [scan, selected]
+  )
+
+  /**
+   * 카탈로그를 읽는다.
+   *
+   * useCallback 으로 감싸는 이유: AddPlugin 이 이 함수를 effect 의존성으로
+   * 쓴다. 인라인 화살표 함수를 넘기면 App 이 다시 그려질 때마다 새 함수가
+   * 되어 effect 가 다시 돌고, 그 안의 setState 가 또 렌더를 부른다 —
+   * 끝나지 않는 되먹임이 된다.
+   */
+  const handleLoadCatalog = useCallback(() => window.api.listCatalog(), [])
+
+  /** 플러그인을 설치한다. 성공하면 목록을 다시 읽는다. */
+  const handleInstallPlugin = useCallback(
+    async (plugin: string) => {
+      const result = await window.api.installPlugin(plugin)
+      if (result.ok) await scan(selected)
+      return result
+    },
+    [scan, selected]
+  )
+
+  /** 모든 마켓플레이스를 한 번에 갱신한다. */
+  const handleUpdateAllMarketplaces = useCallback(async () => {
+    setLoading(true)
+    setNotice(null)
+    const result = await window.api.updateMarketplace()
+    setLoading(false)
+    setNotice(
+      result.ok
+        ? '모든 마켓플레이스를 갱신했습니다.'
+        : `전체 갱신 실패: ${result.error ?? '알 수 없는 오류'}`
+    )
+    if (result.ok) await scan(selected)
+  }, [scan, selected])
+
   const activeTab = TABS.find((t) => t.kind === tab) ?? TABS[0]!
 
   /** 꺼진 자산 보기로 전환. 어느 탭에 몇 개인지 모르므로 스킬 탭부터 보여준다. */
@@ -416,6 +544,21 @@ export function App(): React.JSX.Element {
           onRemove={(path) => void handleRemoveProject(path)}
           onRestore={(path) => void handleRestoreProject(path)}
           onClose={() => setManaging(false)}
+        />
+      )}
+
+      {addingMarketplace && (
+        <AddMarketplace
+          onAdd={handleAddMarketplace}
+          onClose={() => setAddingMarketplace(false)}
+        />
+      )}
+
+      {addingPlugin && (
+        <AddPlugin
+          onLoad={handleLoadCatalog}
+          onInstall={handleInstallPlugin}
+          onClose={() => setAddingPlugin(false)}
         />
       )}
 
@@ -551,6 +694,45 @@ export function App(): React.JSX.Element {
             aria-label={`${activeTab.label} 검색`}
           />
           {/*
+            추가 버튼은 보고 있는 탭에만 둔다. 두 버튼을 늘 띄우면 스킬
+            목록을 보는 중에도 "플러그인 설치" 가 보여서, 지금 화면과
+            상관없는 동작이 상관있는 것처럼 읽힌다.
+          */}
+          {tab === 'marketplace' && (
+            <>
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={() => setAddingMarketplace(true)}
+                title="GitHub 저장소나 로컬 폴더를 마켓플레이스로 등록합니다"
+              >
+                <PlusIcon />
+                마켓플레이스 추가
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={() => void handleUpdateAllMarketplaces()}
+                disabled={loading}
+                title="등록된 모든 마켓플레이스를 출처에서 다시 받아옵니다"
+              >
+                전체 갱신
+              </button>
+            </>
+          )}
+          {tab === 'plugin' && (
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={() => setAddingPlugin(true)}
+              title="마켓플레이스에서 플러그인을 찾아 설치합니다"
+            >
+              <PlusIcon />
+              플러그인 설치
+            </button>
+          )}
+
+          {/*
             검색창에서 떼어 오른쪽 끝에 둔다. 이 버튼이 하는 일은 검색 범위를
             넘어선다 — 프로젝트 목록, 자산 스캔, 사용량을 모두 다시 읽는다.
             검색창에 붙여두면 "검색 결과를 새로 고친다"로 읽힌다.
@@ -634,6 +816,8 @@ export function App(): React.JSX.Element {
             onGoToPlugin={handleGoToPlugin}
             onGoToMarketplacePlugins={handleGoToMarketplacePlugins}
             onRemove={handleRemove}
+            onAutoUpdate={(asset, next) => void handleAutoUpdate(asset, next)}
+            onUpdateNow={(asset) => void handleUpdateNow(asset)}
             busyKey={busyKey}
             rowKeyFor={rowKeyFor}
           />

@@ -539,6 +539,54 @@ async function scanPlugins(
 }
 
 // ---------------------------------------------------------------------------
+// 마켓플레이스 카탈로그 집계
+// ---------------------------------------------------------------------------
+
+/**
+ * 마켓플레이스별로 설치 가능한 플러그인 수를 센다.
+ *
+ * 카탈로그 전체를 들고 오지 않고 개수만 세는 이유: 목록 화면에 필요한
+ * 것은 숫자뿐이고, 실측 2,619개의 설명까지 스캔 결과에 담으면 매 스캔마다
+ * 수 MB 를 IPC 로 보내게 된다. 전체 목록은 설치 모달이 따로 요청한다.
+ *
+ * 실패는 조용히 넘긴다 — 카탈로그가 없는 마켓플레이스가 정상적으로
+ * 존재하고, 숫자 하나가 비는 것이 스캔을 실패시킬 이유는 되지 않는다.
+ */
+async function countAvailablePlugins(
+  registry: Record<string, unknown> | null
+): Promise<Map<string, number>> {
+  const counts = new Map<string, number>()
+  if (!registry) return counts
+
+  const targets: { name: string; location: string }[] = []
+  for (const [name, value] of Object.entries(registry)) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) continue
+    const location = (value as { installLocation?: unknown }).installLocation
+    if (typeof location === 'string' && location !== '') {
+      targets.push({ name, location })
+    }
+  }
+
+  // 서로 다른 디렉토리라 순서가 의미 없다. 병렬로 읽는다.
+  await Promise.all(
+    targets.map(async ({ name, location }) => {
+      try {
+        const raw = await readFile(
+          join(location, '.claude-plugin', 'marketplace.json'),
+          'utf8'
+        )
+        const parsed = JSON.parse(raw) as { plugins?: unknown }
+        if (Array.isArray(parsed.plugins)) counts.set(name, parsed.plugins.length)
+      } catch {
+        // 카탈로그가 없거나 깨졌다. 개수를 적지 않는다(UI 가 생략한다).
+      }
+    })
+  )
+
+  return counts
+}
+
+// ---------------------------------------------------------------------------
 // 충돌 표시
 // ---------------------------------------------------------------------------
 
@@ -611,13 +659,15 @@ export async function scanInventory(project?: ProjectRef | null): Promise<Invent
   // 마켓플레이스. 레지스트리를 기준으로 읽는다 — settings 의
   // extraKnownMarketplaces 보다 항목이 많고 설치 위치와 갱신 시각이 있다.
   const registryPath = join(userRoot, 'plugins', 'known_marketplaces.json')
+  const marketplaceRegistry = await readJson<Record<string, unknown>>(registryPath, issues)
   const marketplaces = collectMarketplaces(
-    await readJson<Record<string, unknown>>(registryPath, issues),
+    marketplaceRegistry,
     userSettings && typeof userSettings['extraKnownMarketplaces'] === 'object'
       ? (userSettings['extraKnownMarketplaces'] as Record<string, unknown>)
       : null,
     pluginResult.plugins.map((p) => p.id),
-    registryPath
+    registryPath,
+    await countAvailablePlugins(marketplaceRegistry)
   )
 
   let projectSkills: SkillAsset[] = []

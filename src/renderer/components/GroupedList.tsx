@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { AssetRow } from './AssetRow.js'
 import { ExternalLinkIcon, TrashIcon } from './Icons.js'
-import type { Asset, PluginAsset } from '../../shared/types.js'
+import type { Asset, MarketplaceAsset, PluginAsset } from '../../shared/types.js'
 
 /**
  * 자산 목록.
@@ -22,6 +22,8 @@ export function GroupedList({
   onGoToPlugin,
   onGoToMarketplacePlugins,
   onRemove,
+  onAutoUpdate,
+  onUpdateNow,
   busyKey,
   rowKeyFor
 }: {
@@ -35,6 +37,8 @@ export function GroupedList({
   onGoToPlugin: (pluginId: string) => void
   onGoToMarketplacePlugins: (marketplace: string) => void
   onRemove: (asset: Asset) => void
+  onAutoUpdate: (asset: MarketplaceAsset, next: boolean) => void
+  onUpdateNow: (asset: Asset) => void
   busyKey: string | null
   rowKeyFor: (asset: Asset) => string
 }): React.JSX.Element {
@@ -88,6 +92,9 @@ export function GroupedList({
       inPluginGroup={inGroup}
       onGoToMarketplacePlugins={onGoToMarketplacePlugins}
       onRemove={onRemove}
+      onAutoUpdate={onAutoUpdate}
+      // 그룹 안의 행은 플러그인이 제공한 자산이라 갱신 대상이 아니다.
+      onUpdateNow={inGroup ? undefined : onUpdateNow}
       busy={busyKey === rowKeyFor(asset)}
     />
   )

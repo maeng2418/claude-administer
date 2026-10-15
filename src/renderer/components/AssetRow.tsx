@@ -1,6 +1,6 @@
 import { ConflictBadge, OffBadge, ScopeBadge } from './Badges.js'
-import { ExternalLinkIcon, FolderIcon, TrashIcon } from './Icons.js'
-import type { Asset } from '../../shared/types.js'
+import { DownloadIcon, ExternalLinkIcon, FolderIcon, TrashIcon } from './Icons.js'
+import type { Asset, MarketplaceAsset } from '../../shared/types.js'
 
 /** 한 자산을 한 줄로 그린다. 종류별로 다른 보조 정보를 덧붙인다. */
 export function AssetRow({
@@ -11,6 +11,8 @@ export function AssetRow({
   inPluginGroup,
   onGoToMarketplacePlugins,
   onRemove,
+  onAutoUpdate,
+  onUpdateNow,
   busy
 }: {
   asset: Asset
@@ -29,6 +31,10 @@ export function AssetRow({
   /** 마켓플레이스 행에서 그 출처의 플러그인 목록으로 이동한다. */
   onGoToMarketplacePlugins?: (marketplace: string) => void
   onRemove?: (asset: Asset) => void
+  /** 마켓플레이스 자동 갱신을 켜거나 끈다. */
+  onAutoUpdate?: (asset: MarketplaceAsset, next: boolean) => void
+  /** 마켓플레이스를 지금 갱신하거나, 플러그인을 최신 버전으로 올린다. */
+  onUpdateNow?: (asset: Asset) => void
   busy?: boolean
 }): React.JSX.Element {
   const isOff = asset.disabled === true
@@ -57,6 +63,31 @@ export function AssetRow({
       </div>
 
       <div className="row-actions">
+        {asset.kind === 'marketplace' && onAutoUpdate && (
+          <AutoUpdateSwitch asset={asset} onAutoUpdate={onAutoUpdate} busy={busy} />
+        )}
+        {/*
+          지금 갱신. 자동 갱신과 나란히 두는 이유: 자동을 켜 두었더라도
+          즉시 받아오고 싶은 순간이 따로 있다(방금 올린 플러그인을 바로
+          쓰려는 경우). 자동 갱신은 세션 시작 뒤 지연 실행이라 "지금" 을
+          대신하지 못한다.
+        */}
+        {onUpdateNow && (asset.kind === 'marketplace' || asset.kind === 'plugin') && (
+          <button
+            type="button"
+            className="btn btn-icon"
+            disabled={busy}
+            onClick={() => onUpdateNow(asset)}
+            title={
+              asset.kind === 'marketplace'
+                ? `${asset.name} 을(를) 출처에서 지금 다시 받아옵니다.`
+                : `${asset.name} 을(를) 최신 버전으로 올립니다. (Claude Code 재시작 후 적용)`
+            }
+            aria-label={`${asset.name} 지금 갱신`}
+          >
+            {busy ? '…' : <DownloadIcon />}
+          </button>
+        )}
         {asset.kind === 'marketplace' &&
           onGoToMarketplacePlugins &&
           asset.installedPlugins > 0 && (
@@ -187,6 +218,70 @@ function ToggleButton({
 }
 
 /**
+ * 마켓플레이스 자동 갱신 스위치.
+ *
+ * 라벨을 붙이는 이유: 같은 행에 다른 버튼들이 있어서 맨 스위치만 두면
+ * 무엇을 켜고 끄는지 알 수 없다. 다른 탭의 스위치는 "자산 켜기/끄기" 라는
+ * 하나의 뜻이지만, 여기서는 마켓플레이스가 아니라 자동 갱신을 켠다.
+ *
+ * 세 상태를 구분해 보여준다. 플래그가 없을 때의 기본값이 출처에 따라
+ * 다르기 때문이다 — 공식 마켓플레이스는 적지 않아도 켜져 있다. '기본값'
+ * 을 따로 표시하지 않으면 사용자가 직접 켠 것과 원래 켜져 있던 것을
+ * 구분할 수 없고, 끈 적도 없는데 왜 켜져 있는지 설명할 길이 없다.
+ */
+function AutoUpdateSwitch({
+  asset,
+  onAutoUpdate,
+  busy
+}: {
+  asset: MarketplaceAsset
+  onAutoUpdate: (asset: MarketplaceAsset, next: boolean) => void
+  busy?: boolean
+}): React.JSX.Element {
+  const info = asset.autoUpdate
+  const isOn = info.effective
+
+  if (!info.editable) {
+    const reason =
+      info.blockedBy === 'foreignScope'
+        ? '이 값은 다른 프로젝트나 관리자 설정에서 정했습니다. 여기서 바꾸면 그 설정과 충돌하므로 잠가 두었습니다.'
+        : '내장 기본 마켓플레이스라 사용자 설정에 항목이 없습니다. 이 도구는 없는 항목을 새로 만들지 않습니다.'
+    return (
+      <span className="auto-update is-locked" title={reason}>
+        <span className="auto-update-label">자동 갱신</span>
+        <span className="auto-update-state">{isOn ? '켜짐(기본)' : '꺼짐(기본)'}</span>
+      </span>
+    )
+  }
+
+  // 직접 적은 값과 기본값을 구분해 보여준다.
+  const stateLabel =
+    info.declared === 'default' ? (isOn ? '기본 켜짐' : '기본 꺼짐') : isOn ? '켜짐' : '꺼짐'
+
+  return (
+    <span className="auto-update">
+      <span className="auto-update-label">자동 갱신</span>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={isOn}
+        className={`switch${isOn ? ' is-on' : ''}`}
+        disabled={busy}
+        onClick={() => onAutoUpdate(asset, !isOn)}
+        title={`settings.json 의 extraKnownMarketplaces["${asset.name}"].autoUpdate 를 백업 후 ${
+          isOn ? 'false' : 'true'
+        } 로 바꿉니다.\n\n현재: ${stateLabel}\n켜면 세션 시작 후 이 출처와 거기서 설치한 플러그인을 자동으로 갱신합니다.`}
+        aria-label={`${asset.name} 자동 갱신 ${isOn ? '끄기' : '켜기'}`}
+      >
+        <span className="switch-track">
+          <span className="switch-thumb" />
+        </span>
+      </button>
+    </span>
+  )
+}
+
+/**
  * 제거 버튼.
  *
  * 제거할 수 없는 자산에는 버튼을 아예 그리지 않는다 — 토글과 달리 '제거 불가'를
@@ -287,8 +382,13 @@ function AssetExtras({
         <>
           <span className="chip">{asset.source}</span>
           <span className={`chip${asset.installedPlugins === 0 ? ' chip-warn' : ''}`}>
-            플러그인 {asset.installedPlugins}개
+            설치 {asset.installedPlugins}개
           </span>
+          {asset.availablePlugins !== undefined && (
+            <span className="chip" title="이 출처에서 설치할 수 있는 플러그인 수">
+              설치 가능 {asset.availablePlugins}개
+            </span>
+          )}
           {!asset.inSettings && (
             <span
               className="chip"

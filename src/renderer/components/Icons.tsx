@@ -1,8 +1,8 @@
 /**
  * 인라인 SVG 아이콘.
  *
- * 아이콘 폰트나 라이브러리를 쓰지 않는 이유는 이 앱이 쓰는 아이콘이 셋뿐이고,
- * 의존성 하나를 더하는 것보다 24줄을 직접 쓰는 쪽이 싸기 때문이다.
+ * 아이콘 폰트나 라이브러리를 쓰지 않는 이유는 쓰는 아이콘이 한 줌이고,
+ * 의존성 하나를 더하는 것보다 몇 줄을 직접 쓰는 쪽이 싸기 때문이다.
  *
  * 모두 currentColor 를 쓰므로 버튼 색을 따라간다. 크기는 1em 기준이라
  * 글자 크기만 바꿔도 함께 커진다.
@@ -66,6 +66,25 @@ export function FolderIcon(): React.JSX.Element {
   return (
     <svg {...BASE}>
       <path d="M1.5 4a1 1 0 0 1 1-1h3l1.3 1.5h6.7a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1V4Z" />
+    </svg>
+  )
+}
+
+/** 더하기. 마켓플레이스·플러그인 추가 버튼에 쓴다. */
+export function PlusIcon(): React.JSX.Element {
+  return (
+    <svg {...BASE}>
+      <path d="M8 3.5v9M3.5 8h9" />
+    </svg>
+  )
+}
+
+/** 아래 화살표. 설치·갱신 버튼에 쓴다. */
+export function DownloadIcon(): React.JSX.Element {
+  return (
+    <svg {...BASE}>
+      <path d="M8 2.5v7.5M5 7.5 8 10.5l3-3" />
+      <path d="M3 12.5h10" />
     </svg>
   )
 }

@@ -21,8 +21,13 @@ export type AssetKind =
  *
  *  - skillOverrides: 전역·프로젝트 스킬 — settings.json 의 skillOverrides[name] = "off"
  *  - enabledPlugins: 플러그인 — enabledPlugins[id] = false
+ *  - marketplaceAutoUpdate: 마켓플레이스 자동 갱신 —
+ *    extraKnownMarketplaces[name].autoUpdate = true/false
  */
-export type ToggleMechanism = 'skillOverrides' | 'enabledPlugins'
+export type ToggleMechanism =
+  | 'skillOverrides'
+  | 'enabledPlugins'
+  | 'marketplaceAutoUpdate'
 
 /** 자산 하나의 토글 가능 여부. */
 export interface ToggleCapability {
@@ -181,6 +186,38 @@ export interface McpAsset extends AssetBase {
 /** 마켓플레이스 출처 종류. */
 export type MarketplaceSource = 'github' | 'git' | 'directory' | 'unknown'
 
+/**
+ * 자동 갱신이 켜져 있는지.
+ *
+ * 세 값인 이유: 플래그가 없을 때의 기본값이 출처에 따라 다르다. 공식
+ * 마켓플레이스는 적지 않아도 켜져 있고, 그 외는 꺼져 있다. 그래서 "적혀
+ * 있지 않음"을 'default' 로 따로 두고, 실제로 어느 쪽인지는 effective 가
+ * 말한다 — 두 값으로 줄이면 "기본값 그대로"와 "직접 켰음"이 같아 보인다.
+ */
+export type AutoUpdateState = 'on' | 'off' | 'default'
+
+/**
+ * 자동 갱신을 이 앱에서 바꿀 수 없는 이유.
+ *
+ *  - notDeclared: 레지스트리에만 있고 사용자 settings.json 에는 없다.
+ *    내장 기본 마켓플레이스가 이 경우다.
+ *  - foreignScope: 다른 프로젝트나 관리자 설정이 선언했다. 그 파일을
+ *    우리가 쓰면 남의 설정을 전역으로 끌어오는 셈이 된다.
+ */
+export type AutoUpdateBlockReason = 'notDeclared' | 'foreignScope'
+
+/** 마켓플레이스 하나의 자동 갱신 상태. */
+export interface AutoUpdateInfo {
+  /** settings.json 에 적힌 값. 없으면 'default'. */
+  declared: AutoUpdateState
+  /** 기본값을 반영해 실제로 켜져 있는지. */
+  effective: boolean
+  /** 이 앱에서 바꿀 수 있는지. */
+  editable: boolean
+  /** editable 이 false 일 때 그 이유. */
+  blockedBy?: AutoUpdateBlockReason
+}
+
 /** 플러그인 마켓플레이스 하나. */
 export interface MarketplaceAsset extends AssetBase {
   kind: 'marketplace'
@@ -193,6 +230,68 @@ export interface MarketplaceAsset extends AssetBase {
   installedPlugins: number
   /** settings.json 의 extraKnownMarketplaces 에도 있는지. */
   inSettings: boolean
+  /** 이 마켓플레이스에서 설치할 수 있는 플러그인 수 (카탈로그 기준). */
+  availablePlugins?: number
+  /** 자동 갱신 상태. 토글은 별도 메커니즘을 쓰므로 toggle 과 분리한다. */
+  autoUpdate: AutoUpdateInfo
+}
+
+/**
+ * 설치할 수 있는 플러그인 하나. 마켓플레이스의 marketplace.json 에서 읽는다.
+ *
+ * 설치된 플러그인(PluginAsset)과 다른 타입인 이유: 공통 필드가 이름과 설명
+ * 뿐이고, 이쪽에는 경로도 버전도 범위도 없다. AssetBase 를 상속하면 채울 수
+ * 없는 필드를 빈 값으로 메워야 한다.
+ */
+export interface CatalogPlugin {
+  /** 플러그인 이름. 설치 시 `<이름>@<마켓플레이스>` 로 조합한다. */
+  name: string
+  /** 이 플러그인을 제공하는 마켓플레이스 이름. */
+  marketplace: string
+  description?: string
+  author?: string
+  category?: string
+  homepage?: string
+  /** 이미 설치돼 있는지. 설치 버튼을 숨기는 데 쓴다. */
+  installed: boolean
+}
+
+/** 카탈로그 읽기 결과. */
+export interface CatalogResult {
+  plugins: CatalogPlugin[]
+  /** 카탈로그를 읽지 못한 마켓플레이스. 전체를 실패시키지 않고 모아 보여준다. */
+  issues: ScanIssue[]
+}
+
+/** CLI 로 수행하는 플러그인·마켓플레이스 작업. */
+export type PluginOp =
+  | { op: 'marketplaceAdd'; source: string }
+  | { op: 'marketplaceUpdate'; name: string }
+  | { op: 'marketplaceUpdateAll' }
+  | { op: 'pluginInstall'; plugin: string }
+  | { op: 'pluginUpdate'; plugin: string }
+
+/**
+ * CLI 작업 결과.
+ *
+ * ok 를 CLI 종료 코드로 정하지 않는다 — 실측 결과 실패해도 0 을 내놓는
+ * 경우가 있어서, --json 의 outcome 필드가 유일하게 믿을 수 있는 신호다.
+ */
+export interface PluginOpResult {
+  ok: boolean
+  op: PluginOp['op']
+  /** 사용자에게 보여줄 CLI 의 메시지. 우리가 다시 쓰지 않고 그대로 전달한다. */
+  message?: string
+  /** CLI 가 준 실패 코드 (not_found, invalid_source 등). */
+  failureCode?: string
+  /**
+   * 플러그인 업데이트에서 실제로 버전이 바뀌었는지.
+   * 'up_to_date' 는 실패가 아니라 "이미 최신" 이다.
+   */
+  updateOutcome?: 'updated' | 'up_to_date'
+  oldVersion?: string
+  newVersion?: string
+  error?: string
 }
 
 export type Asset =
@@ -333,6 +432,25 @@ export interface AdminApi {
   toggleAsset(request: ToggleRequest): Promise<ToggleResult>
   /** 자산을 제거한다. 확인 대화는 main 에서 띄운다. */
   removeAsset(request: RemoveRequest): Promise<RemoveResult>
+  /**
+   * 설치할 수 있는 플러그인 목록. 마켓플레이스 카탈로그를 모아 읽는다.
+   *
+   * 2,600개가 넘으므로 renderer 가 검색으로 걸러 쓴다. 한 번 읽으면
+   * main 이 캐시하고, refresh 로만 다시 읽는다.
+   */
+  listCatalog(refresh?: boolean): Promise<CatalogResult>
+  /**
+   * 마켓플레이스를 추가한다. source 는 owner/repo, git URL, 또는 경로.
+   *
+   * 입력은 사용자가 손으로 치므로 main 에서 모양을 검사한다.
+   */
+  addMarketplace(source: string): Promise<PluginOpResult>
+  /** 마켓플레이스를 갱신한다. name 을 비우면 전체를 갱신한다. */
+  updateMarketplace(name?: string): Promise<PluginOpResult>
+  /** 플러그인을 설치한다. `<이름>@<마켓플레이스>` 형식을 쓴다. */
+  installPlugin(plugin: string): Promise<PluginOpResult>
+  /** 설치된 플러그인을 최신 버전으로 올린다. */
+  updatePlugin(plugin: string): Promise<PluginOpResult>
   revealPath(path: string): Promise<{ ok: boolean; error?: string }>
   /** 구독 사용량을 지금 조회한다. Claude Code 의 로그인 정보를 그대로 쓴다. */
   readUsage(): Promise<UsageReadResult>

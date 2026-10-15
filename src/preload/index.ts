@@ -15,6 +15,13 @@ const api: AdminApi = {
   restoreProject: (path) => ipcRenderer.invoke('admin:restoreProject', path),
   toggleAsset: (request) => ipcRenderer.invoke('admin:toggleAsset', request),
   removeAsset: (request) => ipcRenderer.invoke('admin:removeAsset', request),
+  listCatalog: (refresh) => ipcRenderer.invoke('admin:listCatalog', refresh === true),
+  addMarketplace: (source) => ipcRenderer.invoke('admin:addMarketplace', source),
+  // 이름을 생략하면 전체 갱신이다. undefined 를 그대로 넘기지 않고 null 로 바꿔
+  // 보내는 이유: IPC 직렬화에서 undefined 는 인자 자체가 사라져 arity 가 달라진다.
+  updateMarketplace: (name) => ipcRenderer.invoke('admin:updateMarketplace', name ?? null),
+  installPlugin: (plugin) => ipcRenderer.invoke('admin:installPlugin', plugin),
+  updatePlugin: (plugin) => ipcRenderer.invoke('admin:updatePlugin', plugin),
   revealPath: (path) => ipcRenderer.invoke('admin:revealPath', path),
   readUsage: () => ipcRenderer.invoke('admin:readUsage'),
   openSettings: () => ipcRenderer.invoke('admin:openSettings'),
