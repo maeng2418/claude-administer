@@ -1,9 +1,70 @@
+<div align="center">
+
+<img src="docs/icon.png" width="128" alt="Claude Administer" />
+
 # Claude Administer
 
-맥에 설치된 Claude Code 자산 — 스킬 · 커맨드 · 에이전트 · 훅 · 플러그인 · MCP 서버 — 를
-한 화면에서 보고 관리하는 데스크톱 앱.
+**맥에 설치된 Claude Code 자산을 한 화면에서 보고 관리하는 데스크톱 앱**
 
-Electron + TypeScript + React.
+스킬 · 커맨드 · 에이전트 · 훅 · 플러그인 · MCP 서버 · 마켓플레이스를
+전역과 프로젝트에 걸쳐 모아 보고, 켜고 끄고, 설치하고 지운다.
+
+![macOS](https://img.shields.io/badge/macOS-Apple%20Silicon-000?logo=apple&logoColor=white)
+![Electron](https://img.shields.io/badge/Electron-44-47848F?logo=electron&logoColor=white)
+![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.7-3178C6?logo=typescript&logoColor=white)
+![License](https://img.shields.io/badge/license-private-lightgrey)
+
+<img src="docs/screenshot-marketplace.jpg" width="880" alt="마켓플레이스 탭 — 자동 갱신 토글과 출처별 플러그인 수" />
+
+</div>
+
+---
+
+## 왜 쓰는가
+
+Claude Code 의 자산은 여러 곳에 흩어져 있다. 전역 `~/.claude/`, 프로젝트 `.claude/`,
+그리고 설치된 플러그인이 각각 제공한다. 무엇이 어디서 왔는지, 같은 이름이 겹치면 어느
+쪽이 이기는지, 지금 꺼져 있는 것이 무엇인지는 파일을 열어 봐야 알 수 있다.
+
+이 앱은 그 전부를 한 목록에 모은다. 자산 하나하나에 출처 배지가 붙고, 겹치는 것은
+`덮어씀` / `가려짐` 으로 표시된다. 끄고 켜는 것, 지우는 것, 플러그인을 새로 설치하는
+것까지 화면에서 한다.
+
+## 빠른 시작
+
+```bash
+npm install
+node node_modules/electron/install.js   # Electron 44 는 postinstall 훅이 없어
+                                        # 바이너리를 한 번 직접 받아야 한다
+npm run dev                             # 개발 모드로 실행
+```
+
+설치해서 쓰려면:
+
+```bash
+npm run release   # 빌드 → .dmg → /Applications 설치 → 실행
+```
+
+메뉴바에 아이콘으로 상주한다. 클릭하면 사용량이 뜨고, `설정` 으로 전체 창을 연다.
+
+## 주요 기능
+
+| | |
+|---|---|
+| **모아 보기** | 전역 · 프로젝트 · 플러그인 자산을 한 목록에. 출처 배지와 충돌 표시 |
+| **검색** | 이름 · 설명 · 경로 · 트리거 · 훅 명령 전문을 한 번에 |
+| **켜고 끄기** | 전용 설정 키가 있는 자산. 백업 후 원자적으로 쓴다 |
+| **제거** | 휴지통으로 보내기. 플러그인은 공식 CLI 로 |
+| **플러그인 설치** | 마켓플레이스 2,600여 개 중에서 검색해 설치 |
+| **마켓플레이스 관리** | 등록 · 갱신 · 자동 갱신 토글 |
+| **사용량** | 구독 한도를 메뉴바와 사이드바에서 |
+
+<div align="center">
+<img src="docs/screenshot-install.jpg" width="820" alt="플러그인 설치 — 출처를 번갈아 보여주고 검색으로 좁힌다" />
+<br />
+<sub>플러그인 설치 — 설치된 것은 빼고, 출처를 번갈아 보여준다</sub>
+</div>
 
 ## 무엇을 보여주는가
 
@@ -65,7 +126,8 @@ Electron + TypeScript + React.
 - **켜기 / 끄기** — 전용 설정 키가 있는 자산만
 - **제거** — 휴지통으로 보내기. 플러그인은 공식 CLI 로
 - **플러그인 그룹** — 플러그인이 제공하는 자산은 플러그인별로 묶어 접고 펴기
-- **마켓플레이스 보기** — 출처별 설치 플러그인 수까지 (읽기 전용)
+- **마켓플레이스** — 등록 · 갱신 · 자동 갱신 토글, 출처별 설치 플러그인 수
+- **플러그인 설치** — 마켓플레이스 카탈로그에서 검색해 설치
 
 ### 무엇을 끌 수 있는가
 
@@ -82,14 +144,16 @@ Claude Code 는 자산 종류마다 끄는 방법이 다르고, 전용 키가 �
 | 커맨드 | 전용 설정 없음 | 불가 — 파일을 옮기거나 지워야 함 |
 | 훅 | `hooks` 항목을 직접 지워야 함 | 불가 — 편집기로 열어 수정 |
 | MCP 서버 | `mcp.json` 항목을 직접 지워야 함 | 불가 — 편집기로 열어 수정 |
+| 마켓플레이스 | 끄는 개념이 없음 (제거만 가능) | 불가 — 대신 자동 갱신을 토글 |
 
 훅·MCP·에이전트를 토글에 넣지 않은 이유는 각각 다르다. 훅과 MCP 는 전용 스위치가
 없어 원래 설정 항목을 지워야 하고, `hooks` 는 중첩 구조라 같은 안전장치를 쓸 수 없다.
 에이전트는 `permissions.deny` 를 써야 하는데, 권한 설정은 어떤 명령이 자동 승인되는지를
 정하므로 이 도구가 건드리지 않는다.
 
-이 도구가 쓰는 키는 `skillOverrides` 와 `enabledPlugins` 둘뿐이고, 모두 전역
-`~/.claude/settings.json` 에 쓴다. 적용에는 Claude Code 재시작이 필요하다.
+이 도구가 쓰는 키는 `skillOverrides` · `enabledPlugins` ·
+`extraKnownMarketplaces[].autoUpdate` 셋뿐이고, 모두 전역 `~/.claude/settings.json` 에
+쓴다. 적용에는 Claude Code 재시작이 필요하다.
 
 플러그인이 제공하는 자산은 **그룹 헤더에만** 토글·이동·제거를 둔다. 그룹 안 행마다
 같은 버튼을 반복하면 중복이라 토글 칸을 비우고, 헤더의 버튼으로 그 플러그인 전체를
@@ -148,20 +212,42 @@ Claude Code 가 소유하는 파일이고, 그 포맷에 맞춰 직접 쓰면 Cl
 플러그인 0개인 출처는 등록만 되어 있고 쓰이지 않는 것이다 (실측: `im-not-ai`).
 `플러그인 보기` 를 누르면 플러그인 탭으로 옮겨 그 출처의 것만 걸러 보여준다.
 
-마켓플레이스도 읽기 전용이다. 레지스트리는 Claude Code 가 소유하고, 제거는
-`claude plugin marketplace remove` 영역이다.
+### 추가 · 갱신 · 자동 갱신
 
-## 설치와 실행
+등록과 갱신은 공식 CLI(`claude plugin marketplace add` / `update`)에 맡긴다.
+레지스트리와 캐시 디렉토리는 Claude Code 가 소유하므로 직접 쓰지 않는다.
 
-```bash
-npm install
+자동 갱신만 예외로 설정 파일을 직접 쓴다. 그 값은 `settings.json` 의
+`extraKnownMarketplaces[이름].autoUpdate` 에 있고 CLI 에 이를 설정하는 플래그가
+없어서, 직접 쓰는 것이 유일한 방법이다 (Claude Code 의 `/plugin` 토글도 같은 곳을 쓴다).
 
-# Electron 44 는 패키지에 postinstall 훅이 없어 바이너리가 자동으로
-# 내려오지 않는다. 설치 후 한 번 직접 실행해야 한다.
-node node_modules/electron/install.js
+상태를 세 가지로 보여준다. 플래그가 없을 때의 기본값이 출처에 따라 다르기 때문이다 —
+공식 마켓플레이스는 적지 않아도 켜져 있어서, 없는 것을 `꺼짐` 으로 보여주면 거짓이 된다.
 
-npm run dev
-```
+| 표시 | 뜻 |
+|---|---|
+| `켜짐` / `꺼짐` | `settings.json` 에 직접 적힌 값 |
+| `기본 켜짐` / `기본 꺼짐` | 적힌 값이 없어 기본값을 따름 |
+| `켜짐(기본)` (잠김) | 이 앱에서 바꿀 수 없음 |
+
+잠기는 경우는 둘이다. 내장 기본 마켓플레이스는 사용자 설정에 항목 자체가 없고,
+다른 프로젝트나 관리자 설정이 선언한 값은 우리가 덮어쓰면 그쪽 의도와 충돌한다
+(실측: 11곳 중 2곳).
+
+CLI 결과는 종료 코드가 아니라 `--json` 의 `outcome` 으로 판정한다. 실패해도 `0` 으로
+끝나는 경우가 있고, JSON 뒤에 사람용 메시지가 붙어 "마지막 줄" 가정도 깨진다.
+
+### 플러그인 설치
+
+마켓플레이스 카탈로그(`marketplace.json`)를 모아 읽는다. 실측 11곳에서 2,620개가 나오고
+그중 한 곳이 2,282개를 차지한다. 그래서 두 가지를 지킨다.
+
+- **설치된 것은 목록에서 뺀다** — 이 창은 고르는 자리라, 고를 수 없는 항목이 섞이면
+  세어 본 개수와 실제로 누를 수 있는 개수가 달라진다
+- **출처를 번갈아 뽑는다** — 이름순으로 60개를 자르면 거의 전부 한 출처가 된다.
+  번갈아 뽑으면 여섯 출처가 모두 첫 화면에 드러난다
+
+## 개발
 
 `npm run dev` 는 앱을 실행한 디렉토리를 "현재 프로젝트"로 본다. 다른 프로젝트를 보려면
 그 디렉토리에서 실행하면 된다.
@@ -180,11 +266,14 @@ npm run release     # dist + install:app 을 한 번에
 이 도구가 쓰는 파일은 `~/.claude/settings.json` 하나뿐이고, 그 쓰기 경로는 다음을 지킨다.
 
 1. **백업 먼저** — 쓰기 전에 `settings.json.bak-<타임스탬프>` 사본을 만든다
-2. **한 키만** — `enabledPlugins` 외의 키는 읽은 그대로 되돌려 쓴다
+2. **담당 키만** — 그 변경이 맡은 키 외에는 읽은 그대로 되돌려 쓴다
 3. **원자적 교체** — 임시 파일에 쓰고 `rename` 한다. 중간에 끊겨도 반쯤 덮인 파일이 남지 않는다
 4. **되읽어 검증** — 쓴 뒤 다시 파싱해 값과 키 구성을 확인하고, 어긋나면 백업에서 복구한다
 5. **깨진 파일은 건드리지 않음** — `settings.json` 파싱이 실패하면 아예 쓰지 않는다
-6. **없는 항목은 만들지 않음** — `enabledPlugins` 에 없는 플러그인 ID 는 거부한다
+6. **없는 항목은 만들지 않음** — `enabledPlugins` 에 없는 플러그인 ID 는 거부한다.
+   마켓플레이스 자동 갱신은 예외로, 레지스트리에서 읽은 `source` 를 함께 넣어 완전한
+   항목을 만든다 — `autoUpdate` 만 있는 항목은 Claude Code 가 무시하므로, 사용자는
+   켰다고 믿는데 아무 일도 일어나지 않게 된다
 
 renderer 에는 Node 를 주지 않는다(`contextIsolation: true`, `nodeIntegration: false`).
 파일 접근은 전부 IPC 를 거치며, `열기` / `위치` 가 받는 경로는 정규화 후
@@ -214,6 +303,10 @@ frontmatter 는 Claude Code 와 같은 너그러움으로 읽는다. `argument-h
 | 권한 탭 제거 · 중복 버튼 제거 | 오프스크린 실행 후 DOM 조회 | 17/17 |
 | 리스트 UI 개선 | 행 높이 · 그룹 중복 · 아이콘 · 접근성 | 24/24 (행 142px → 73px) |
 | 앱 실행 (그룹 · 이동 · 제거) | 오프스크린 실행 후 실제 DOM 조회 | 33/33 통과, 콘솔 오류 0 |
+| 자동 갱신 상태 판정 | 실제 레지스트리 + `settings.json` 11곳 | 잠김 2곳 포함 전부 일치 |
+| 자동 갱신 쓰기 | 실파일 사본 대상 왕복(끄기 → 켜기) | 21/21, 최상위 키 21개 · hooks · permissions 불변 |
+| 플러그인 CLI 파서 | 실제 `claude plugin` 호출 5종 | 7/7 (exit 0 실패 · JSON 위치 함정 포함) |
+| 카탈로그 | 실제 마켓플레이스 11곳 | 2,620개 / 204ms, 직렬화 0.83MB |
 
 에이전트 수가 19에서 29로 늘어난 것은 플러그인이 제공하는 에이전트를 이전에는
 개수만 세고 목록에서 버렸기 때문이다.
@@ -228,23 +321,30 @@ src/
     scanner.ts         자산 스캔 (읽기 전용)
     projects.ts        프로젝트 발견 · 선택 저장 · 허용 경로
     settings.ts        settings.json 쓰기 (백업 · 검증 · 복구)
-    marketplaces.ts    마켓플레이스 레지스트리 (읽기 전용)
+    marketplaces.ts    마켓플레이스 목록 + 자동 갱신 상태 판정
+    catalog.ts         설치 가능한 플러그인 카탈로그 읽기
+    plugin-cli.ts      claude plugin CLI 호출 (--json 파싱)
     remove.ts          휴지통 이동 · 플러그인 CLI 호출
+    usage.ts           구독 사용량 조회
+    tray.ts            메뉴바 아이콘
+    popover.ts         메뉴바 팝오버 창
     index.ts           Electron main + IPC + 경로 가드 + 확인 대화
-  preload/index.ts     contextBridge — 8개 함수만 노출
+  preload/index.ts     contextBridge — 지정한 함수만 노출
   renderer/            React UI
 ```
 
 ## 알려진 한계
 
-- 설정 쓰기는 `settings.json` 의 두 키(`skillOverrides` · `enabledPlugins`)뿐이다.
+- 설정 쓰기는 `settings.json` 의 세 키(`skillOverrides` · `enabledPlugins` ·
+  `extraKnownMarketplaces[].autoUpdate`)뿐이다.
   에이전트 · 훅 · MCP 는 읽기와 "편집기로 열기"까지다
 - 제거는 휴지통 이동과 플러그인 CLI 호출뿐이다. 훅과 MCP 항목은 지울 수 없다
 - 제거한 자산은 다시 받아오지 않는다. 휴지통에서 되돌리거나 플러그인을 재설치해야 한다
 - 한 번에 한 프로젝트만 본다. 여러 프로젝트를 나란히 비교하는 화면은 없다
 - 프로젝트 발견은 Claude Code 사용 기록에 의존한다. 기록이 없는 프로젝트는
   폴더를 직접 추가해야 한다
-- 마켓플레이스는 보기만 된다. 편집은 `claude plugin marketplace` 로
+- 마켓플레이스 제거는 `claude plugin marketplace remove` 로 한다. 이 앱은 등록 · 갱신 ·
+  자동 갱신까지만 한다
 - 플러그인 설정값(`pluginConfigs`)은 아직 화면에 없다. Jira 계정 같은 자격 성격
   값이 들어있어, 넣을 때는 기본 가림 처리가 필요하다
 - 앱 서명이 없다. 이 기계에서는 `.app`(304MB)과 `.dmg`(128MB) 모두 그냥 실행되지만,
