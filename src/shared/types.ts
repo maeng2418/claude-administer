@@ -15,6 +15,7 @@ export type AssetKind =
   | 'plugin'
   | 'mcp'
   | 'marketplace'
+  | 'rule'
 
 /**
  * 자산을 끄는 방법. settings.json 의 어느 키를 쓰는지가 종류마다 다르다.
@@ -294,6 +295,47 @@ export interface PluginOpResult {
   error?: string
 }
 
+/**
+ * 규칙 파일 하나. `.claude/rules/` 아래의 마크다운 파일이다.
+ *
+ * 다른 자산과 달리 "켜고 끄는" 것이 아니라 **얼마나 먹는지**가 관심사다.
+ * 규칙은 세션 시작 때 컨텍스트로 들어가므로, 늘 로드되는 파일이 크면
+ * 매 세션 그만큼이 먼저 나간다.
+ */
+export interface RuleAsset extends AssetBase {
+  kind: 'rule'
+  /** rules 디렉토리 기준 상대 경로. 이름이 겹칠 수 있어 이쪽이 실질적 식별자다. */
+  relativePath: string
+  /** 파일 크기(바이트). */
+  bytes: number
+  /**
+   * 토큰 추정치.
+   *
+   * 바이트를 4로 나눈 어림이다. 실측상 이 트리는 98.9% 가 ASCII 라
+   * 이 어림이 대체로 맞는다. 정확한 수치가 필요하면 토크나이저가 필요한데,
+   * 화면에 쓰는 용도로는 자릿수만 맞으면 충분하다.
+   */
+  estimatedTokens: number
+  /**
+   * 조건 없이 매 세션 로드되는지.
+   *
+   * frontmatter 에 `paths:` 가 없으면 로드 조건이 없다는 뜻이다. 있으면
+   * 그 글롭에 걸리는 파일을 Read/Write/Edit 할 때 따라온다.
+   */
+  alwaysLoaded: boolean
+  /** frontmatter 의 `paths:` 원문. 조건부일 때만 있다. */
+  paths?: string
+  /**
+   * frontmatter 가 깨져서 조건이 무시된 경우의 사유.
+   *
+   * 이 경우가 까다로운 이유: 파일에 `paths:` 가 적혀 있어도 YAML 이
+   * 파싱되지 않으면 Claude Code 는 frontmatter 를 통째로 무시하고 조건
+   * 없는 규칙으로 읽는다. 글만 보면 조건부 같은데 실제로는 매 세션
+   * 로드되므로, 눈에 띄게 따로 표시한다.
+   */
+  frontmatterError?: string
+}
+
 export type Asset =
   | SkillAsset
   | AgentAsset
@@ -302,6 +344,7 @@ export type Asset =
   | PluginAsset
   | McpAsset
   | MarketplaceAsset
+  | RuleAsset
 
 /** 프로젝트를 어떻게 알게 됐는지. 목록에서 출처를 구분해 보여준다. */
 export type ProjectOrigin = 'discovered' | 'added'
@@ -343,6 +386,7 @@ export interface Inventory {
   plugins: PluginAsset[]
   mcp: McpAsset[]
   marketplaces: MarketplaceAsset[]
+  rules: RuleAsset[]
   issues: ScanIssue[]
 }
 

@@ -43,7 +43,13 @@ export function AssetRow({
     <div className="row">
       <div className="row-main">
         <div className="row-head">
-          <span className={`row-name${isOff ? ' is-off' : ''}`}>{asset.name}</span>
+          {/*
+            규칙은 이름이 아니라 상대 경로로 식별한다. moai/core/x.md 처럼
+            디렉토리가 분류 역할을 해서, 파일명만 보면 어느 묶음인지 알 수 없다.
+          */}
+          <span className={`row-name${isOff ? ' is-off' : ''}`}>
+            {asset.kind === 'rule' ? asset.relativePath : asset.name}
+          </span>
           {/* 그룹 안에서는 scope 배지를 숨긴다 — 헤더가 이미 '플러그인' 이라고 말한다. */}
           {!inPluginGroup && <ScopeBadge scope={asset.scope} />}
           {isOff && <OffBadge />}
@@ -121,6 +127,16 @@ export function AssetRow({
       </div>
     </div>
   )
+}
+
+/** 바이트를 사람이 읽는 단위로. 1KB 미만은 바이트 그대로 둔다. */
+function formatSize(bytes: number): string {
+  return bytes < 1024 ? `${bytes}B` : `${(bytes / 1024).toFixed(1)}KB`
+}
+
+/** 토큰 어림값. 1,000 이상은 K 로 접는다. */
+function formatTokens(tokens: number): string {
+  return tokens < 1000 ? `${tokens}` : `${(tokens / 1000).toFixed(1)}K`
 }
 
 /**
@@ -377,6 +393,48 @@ function AssetExtras({
       )
     case 'mcp':
       return <span className="chip">{asset.transport}</span>
+    case 'rule':
+      return (
+        <>
+          {/*
+            항상 로드되는 것만 강조한다. 조건부는 다수(실측 74개 중 60개)이고
+            비용이 들지 않으므로, 둘 다 칠하면 정작 봐야 할 쪽이 묻힌다.
+          */}
+          {asset.alwaysLoaded ? (
+            <span
+              className="chip chip-warn"
+              title="frontmatter 에 paths: 가 없어 매 세션 로드됩니다"
+            >
+              항상 로드
+            </span>
+          ) : (
+            <span className="chip" title={`paths: ${asset.paths ?? ''}`}>
+              조건부
+            </span>
+          )}
+          <span className="chip" title={`${asset.bytes.toLocaleString()} 바이트`}>
+            {formatSize(asset.bytes)}
+          </span>
+          {/*
+            토큰은 어림이라는 것을 ~ 로 드러낸다. 정확한 값처럼 보이면
+            예산을 그 숫자에 맞춰 세우게 된다.
+          */}
+          <span
+            className="chip"
+            title="바이트를 4로 나눈 어림값입니다. 정확한 토큰 수는 토크나이저가 필요합니다."
+          >
+            ~{formatTokens(asset.estimatedTokens)}
+          </span>
+          {asset.frontmatterError && (
+            <span
+              className="chip chip-danger"
+              title={`frontmatter 파싱 실패: ${asset.frontmatterError}\n\npaths: 가 적혀 있어도 Claude Code 가 무시하고 매 세션 로드합니다.`}
+            >
+              frontmatter 깨짐
+            </span>
+          )}
+        </>
+      )
     case 'marketplace':
       return (
         <>

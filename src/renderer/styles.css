@@ -1309,3 +1309,9 @@ body {
 .modal > .modal-input {
   margin: 0 16px 12px;
 }
+
+/* 위험을 알리는 칩. 깨진 frontmatter 처럼 고쳐야 할 상태에 쓴다. */
+.chip-danger {
+  background: color-mix(in srgb, var(--danger) 16%, transparent);
+  color: var(--danger);
+}

@@ -1,6 +1,6 @@
 import { readFile, readdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { basename, join, resolve } from 'node:path'
+import { basename, join, relative, resolve } from 'node:path'
 import { parseFrontmatter, readString, readStringList } from './frontmatter.js'
 import { collectMarketplaces } from './marketplaces.js'
 import type {
@@ -12,9 +12,10 @@ import type {
   McpAsset,
   PluginAsset,
   ProjectRef,
+  RemoveCapability,
+  RuleAsset,
   ScanIssue,
   Scope,
-  RemoveCapability,
   SkillAsset,
   ToggleCapability
 } from '../shared/types.js'
@@ -136,7 +137,9 @@ const NO_TOGGLE_REASONS = {
   hook: '훅은 settings.json 의 hooks 항목을 직접 지워야 끌 수 있습니다. 편집기로 열어 수정하세요.',
   mcp: 'MCP 서버는 mcp.json 의 항목을 직접 지워야 끌 수 있습니다. 편집기로 열어 수정하세요.',
   agent:
-    '에이전트를 끄려면 settings.json 의 permissions.deny 에 Agent(이름) 을 넣어야 합니다. 이 도구는 권한 설정을 수정하지 않습니다. 편집기로 열어 수정하세요.'
+    '에이전트를 끄려면 settings.json 의 permissions.deny 에 Agent(이름) 을 넣어야 합니다. 이 도구는 권한 설정을 수정하지 않습니다. 편집기로 열어 수정하세요.',
+  rule:
+    '규칙에는 스킬·플러그인 같은 전용 토글 키가 없습니다. 조건부로 바꾸려면 frontmatter 에 paths: 를 넣고, 아예 빼려면 settings.json 의 claudeMdExcludes 를 쓰거나 파일을 옮기세요.'
 } as const
 
 /** 제거할 수 없는 자산에 붙일 사유. */
@@ -539,6 +542,120 @@ async function scanPlugins(
 }
 
 // ---------------------------------------------------------------------------
+// 규칙
+// ---------------------------------------------------------------------------
+
+/**
+ * 토큰 추정에 쓰는 바이트/토큰 비율.
+ *
+ * 영문 산문의 대략적인 값이다. 실측상 이 트리는 98.9% 가 ASCII 라 이
+ * 어림이 대체로 맞는다. 토크나이저를 들이지 않는 이유는 화면에 쓰는
+ * 용도에는 자릿수만 맞으면 충분하고, 정확한 수치를 위해 의존성을
+ * 하나 더 지는 것이 비싸기 때문이다.
+ */
+const BYTES_PER_TOKEN = 4
+
+/**
+ * 규칙 파일을 스캔한다.
+ *
+ * 다른 자산과 다른 점이 둘 있다.
+ *
+ * 첫째, 이름이 아니라 **상대 경로**가 식별자다. `constitution.md` 처럼
+ * 같은 이름이 디렉토리를 달리해 여러 번 나오기 때문이다.
+ *
+ * 둘째, 관심사가 "켜고 끄기" 가 아니라 "얼마나 먹는가" 다. 규칙은 세션
+ * 시작 때 시스템 프롬프트로 들어가므로, 조건 없이 로드되는 파일이 크면
+ * 매 세션 그만큼이 먼저 나간다. frontmatter 의 `paths:` 가 그 조건을
+ * 정하므로, 그 유무로 둘을 가른다.
+ */
+async function scanRules(
+  root: string,
+  scope: Scope,
+  issues: IssueLog
+): Promise<RuleAsset[]> {
+  const dir = join(root, 'rules')
+  const out: RuleAsset[] = []
+
+  const walk = async (current: string, depth: number): Promise<void> => {
+    const entries = await listDir(current, issues)
+    for (const entry of entries) {
+      const full = join(current, entry.name)
+      if (entry.isDirectory) {
+        // 실측 트리는 3단계(rules/moai/core/*.md)까지 쓴다. 여유를 둔다.
+        if (depth < 4) await walk(full, depth + 1)
+        continue
+      }
+      if (!entry.name.endsWith('.md')) continue
+
+      let bytes = 0
+      try {
+        bytes = (await stat(full)).size
+      } catch (err) {
+        issues.add(full, err)
+        continue
+      }
+
+      /*
+        readMarkdownMeta 대신 직접 파싱한다. 그쪽은 파싱 실패를 경고로만
+        남기고 빈 데이터를 돌려주는데, 규칙에서는 그 실패 자체가 의미를
+        가진다 — frontmatter 가 깨지면 Claude Code 는 그것을 통째로
+        무시하고 조건 없는 규칙으로 읽는다. 즉 `paths:` 가 적혀 있어도
+        실제로는 매 세션 로드된다.
+      */
+      let raw = ''
+      try {
+        raw = await readFile(full, 'utf8')
+      } catch (err) {
+        issues.add(full, err)
+        continue
+      }
+      const fm = parseFrontmatter(raw)
+      if (fm.error) issues.note(full, `frontmatter: ${fm.error}`)
+
+      // 파싱이 실패했으면 paths 가 있든 없든 조건은 적용되지 않는다.
+      const paths = fm.error ? undefined : readString(fm.data, 'paths')
+
+      out.push({
+        kind: 'rule',
+        name: basename(entry.name, '.md'),
+        relativePath: relative(dir, full),
+        scope,
+        path: full,
+        description: readString(fm.data, 'description'),
+        bytes,
+        estimatedTokens: Math.round(bytes / BYTES_PER_TOKEN),
+        alwaysLoaded: paths === undefined,
+        ...(paths ? { paths } : {}),
+        ...(fm.error ? { frontmatterError: fm.error } : {}),
+        /*
+          규칙을 끄는 전용 설정 키가 Claude Code 에 없다. 파일을 옮기거나
+          `paths:` 를 붙여 조건부로 만드는 것이 실제 방법이라, 그 사실을
+          사유로 적고 토글은 비활성으로 둔다.
+        */
+        toggle: cannotToggle(NO_TOGGLE_REASONS.rule),
+        // 규칙 파일은 사용자가 직접 쓴 문서다. 휴지통을 거쳐 되돌릴 수 있게 한다.
+        remove: trashable(full)
+      })
+    }
+  }
+
+  await walk(dir, 0)
+
+  /*
+    항상 로드되는 것을 위로, 그 안에서는 큰 것을 위로. 이 목록을 보는
+    이유가 "무엇이 컨텍스트를 먹고 있나" 이므로, 가장 비싼 것이 먼저
+    보여야 한다.
+  */
+  out.sort(
+    (a, b) =>
+      Number(b.alwaysLoaded) - Number(a.alwaysLoaded) ||
+      b.bytes - a.bytes ||
+      a.relativePath.localeCompare(b.relativePath)
+  )
+  return out
+}
+
+// ---------------------------------------------------------------------------
 // 마켓플레이스 카탈로그 집계
 // ---------------------------------------------------------------------------
 
@@ -675,6 +792,7 @@ export async function scanInventory(project?: ProjectRef | null): Promise<Invent
   let projectCommands: CommandAsset[] = []
   let projectHooks: HookAsset[] = []
   let projectMcp: McpAsset[] = []
+  let projectRules: RuleAsset[] = []
 
   if (projectRoot && projectDir) {
     const projectSettingsPath = join(projectRoot, 'settings.json')
@@ -683,6 +801,8 @@ export async function scanInventory(project?: ProjectRef | null): Promise<Invent
       issues
     )
     const mcpPath = join(projectDir, '.mcp.json')
+
+    projectRules = await scanRules(projectRoot, 'project', issues)
 
     ;[projectSkills, projectAgents, projectCommands] = await Promise.all([
       scanSkills(projectRoot, 'project', issues, toggles),
@@ -712,6 +832,7 @@ export async function scanInventory(project?: ProjectRef | null): Promise<Invent
     ]),
     // 훅과 MCP 는 이름이 고유하지 않거나 충돌 개념이 없어 표시하지 않는다.
     hooks: [...projectHooks, ...userHooks],
+    rules: projectRules,
     plugins: pluginResult.plugins,
     mcp: markConflicts([...projectMcp, ...userMcp]),
     marketplaces,

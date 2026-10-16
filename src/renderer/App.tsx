@@ -24,7 +24,8 @@ const TABS: { kind: AssetKind; label: string; field: keyof Inventory }[] = [
   { kind: 'hook', label: '훅', field: 'hooks' },
   { kind: 'plugin', label: '플러그인', field: 'plugins' },
   { kind: 'mcp', label: 'MCP 서버', field: 'mcp' },
-  { kind: 'marketplace', label: '마켓플레이스', field: 'marketplaces' }
+  { kind: 'marketplace', label: '마켓플레이스', field: 'marketplaces' },
+  { kind: 'rule', label: '규칙', field: 'rules' }
 ]
 
 /** 검색어가 자산의 어느 필드든 걸리는지 본다. */
@@ -42,7 +43,8 @@ function matches(asset: Asset, query: string): boolean {
     asset.kind === 'mcp' ? `${asset.transport} ${asset.command ?? ''}` : '',
     asset.kind === 'marketplace'
       ? `${asset.source} ${asset.origin ?? ''} ${asset.installLocation ?? ''}`
-      : ''
+      : '',
+    asset.kind === 'rule' ? `${asset.relativePath} ${asset.paths ?? ''}` : ''
   ]
   return haystack.join(' ').toLowerCase().includes(q)
 }
@@ -520,6 +522,24 @@ export function App(): React.JSX.Element {
     return { total: all.length, off, byScope }
   }, [inventory])
 
+  /**
+   * 규칙 집계 — 매 세션 나가는 비용.
+   *
+   * 조건부 규칙은 합계에 넣지 않는다. 그쪽은 해당 파일을 다룰 때만
+   * 따라오므로, 함께 더하면 "항상 드는 비용" 이 실제보다 커 보인다.
+   */
+  const ruleStats = useMemo(() => {
+    const rules = inventory?.rules ?? []
+    const always = rules.filter((r) => r.alwaysLoaded)
+    const bytes = always.reduce((n, r) => n + r.bytes, 0)
+    const tokens = always.reduce((n, r) => n + r.estimatedTokens, 0)
+    return {
+      always: always.length,
+      size: bytes < 1024 ? `${bytes}B` : `${Math.round(bytes / 1024)}KB`,
+      tokens: tokens < 1000 ? `${tokens}` : `${Math.round(tokens / 1000)}K`
+    }
+  }, [inventory])
+
   /** 마지막 스캔 시각을 시:분:초로. 날짜는 같은 날이 대부분이라 생략한다. */
   const scannedAtLabel = useMemo(() => {
     if (!inventory) return null
@@ -802,6 +822,20 @@ export function App(): React.JSX.Element {
             배너는 닫을 수 있어야 하는데, 이건 닫으면 되살릴 방법이 없다.
             목록 위에 흐린 작은 글씨로 두어 필요할 때 읽히되 알림과 섞이지 않게 한다.
           */}
+          {/*
+            규칙 탭의 요약. 이 탭의 존재 이유가 "무엇이 매 세션 컨텍스트를
+            먹는가" 이므로, 개별 행보다 이 합계가 먼저 읽혀야 한다.
+          */}
+          {tab === 'rule' && inventory && inventory.rules.length > 0 && (
+            <div className="content-note">
+              규칙 {inventory.rules.length}개 · 그중 <b>{ruleStats.always}개는 매 세션
+              로드</b>되어 약 {ruleStats.tokens} 토큰을 먼저 씁니다 (
+              {ruleStats.size}). 나머지 {inventory.rules.length - ruleStats.always}개는
+              frontmatter 의 <code>paths:</code> 에 걸리는 파일을 다룰 때만 따라옵니다.
+              토큰은 바이트를 4로 나눈 어림값입니다.
+            </div>
+          )}
+
           {tab === 'marketplace' && inventory && (
             <div className="content-note">
               레지스트리 {inventory.marketplaces.length}곳 · 설치된 플러그인{' '}
