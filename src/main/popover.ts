@@ -86,6 +86,18 @@ function create(): BrowserWindow {
     if (!window.isDestroyed()) window.hide()
   })
 
+  /*
+    숨을 때 알린다. 팝오버는 닫혀도 창이 살아 있어서, 렌더러의 타이머가
+    그대로 돌면 보이지도 않는 값을 1분마다 네트워크로 가져온다. 설정
+    창까지 켜져 있으면 분당 2회가 되고, 실측으로 HTTP 429 를 받았다.
+
+    blur·toggle·hidePopover 세 경로가 모두 hide() 로 모이므로 여기
+    한 곳이면 전부 걸린다.
+  */
+  window.on('hide', () => {
+    if (!window.isDestroyed()) window.webContents.send('popover:hidden')
+  })
+
   // 외부 링크는 기본 브라우저로. 설정 창과 같은 규칙이다.
   window.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('https://')) void shell.openExternal(url)

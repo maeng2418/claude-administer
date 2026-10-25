@@ -43,5 +43,17 @@ rm -rf "$DEST"
 cp -R "$SRC" "$DEST"
 echo "설치: $DEST"
 
+# 빌드 산출물을 Spotlight 색인에서 뺀다.
+#
+# release/ 에도 같은 앱 번들이 있어서, 색인되면 Spotlight 검색에 같은
+# 이름이 둘 뜬다 — 설치본과 빌드 산출물. 어느 쪽을 누르는지 알 수 없어
+# 엉뚱한 사본을 띄우게 된다.
+#
+# 복사가 끝난 뒤에 심는 이유: 먼저 두면 마커가 $DEST 안으로 함께 복사돼
+# /Applications 의 설치본까지 색인에서 빠진다.
+#
+# 파일은 빌드할 때마다 사라지므로 설치할 때마다 다시 심는다.
+touch "$(dirname "$SRC")/.metadata_never_index" 2>/dev/null || true
+
 open -a "$DEST"
 echo "실행: ${APP_NAME}"

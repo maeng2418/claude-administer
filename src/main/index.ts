@@ -599,8 +599,15 @@ function registerHandlers(): void {
     }
   )
 
-  // 사용량은 읽기만 한다. 인자가 없으므로 검사할 것도 없다.
-  ipcMain.handle('admin:readUsage', async (): Promise<UsageReadResult> => readUsage())
+  /*
+    사용량은 읽기만 한다. force 는 "다시 시도" 버튼에서만 true 로 오며,
+    캐시만 건너뛴다 — 429 백오프까지 건너뛰면 막힌 상태에서 사용자가
+    버튼을 연타할 때 그 사이에 풀릴 것도 안 풀린다.
+  */
+  ipcMain.handle(
+    'admin:readUsage',
+    async (_event, force: unknown): Promise<UsageReadResult> => readUsage(force === true)
+  )
 
   /*
     메뉴바 팝오버의 두 버튼. 팝오버를 먼저 치우는 이유는 순서다 —

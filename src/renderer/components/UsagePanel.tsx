@@ -115,14 +115,23 @@ export function UsagePanel({
           <span className="foot-value">{loading ? '읽는 중…' : '읽지 못함'}</span>
         </div>
         <div className="usage-hint">{usage.error}</div>
+        {/*
+          429 로 쉬는 중에는 버튼을 잠근다. 눌러도 네트워크를 치지 않아
+          아무 일도 일어나지 않는데, 살아있는 버튼은 사용자가 계속 누르게
+          만든다 — 고장으로 읽힌다. 쉬는 시간은 문구가 말해준다.
+        */}
         <button
           type="button"
           className="usage-install"
           onClick={onRefresh}
-          disabled={loading}
-          title="사용량을 다시 조회합니다"
+          disabled={loading || usage.reason === 'rate-limit'}
+          title={
+            usage.reason === 'rate-limit'
+              ? '요청이 잦아 쉬는 중입니다. 자동으로 다시 시도합니다.'
+              : '사용량을 다시 조회합니다'
+          }
         >
-          {loading ? '읽는 중…' : '다시 시도'}
+          {loading ? '읽는 중…' : usage.reason === 'rate-limit' ? '대기 중' : '다시 시도'}
         </button>
       </div>
     )

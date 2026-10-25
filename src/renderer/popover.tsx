@@ -24,10 +24,14 @@ function Popover(): React.JSX.Element {
   const [loading, setLoading] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
 
-  const load = useCallback(async (): Promise<void> => {
+  /**
+   * @param force 사용자가 "다시 시도" 를 눌렀을 때만 true. 자동 갱신은
+   *   캐시를 그대로 쓴다 — main 이 창과 공유하므로 둘이 따로 치지 않는다.
+   */
+  const load = useCallback(async (force = false): Promise<void> => {
     setLoading(true)
     try {
-      setUsage(await window.api.readUsage())
+      setUsage(await window.api.readUsage(force))
     } catch (err) {
       /*
         IPC 자체가 실패한 경우다 — 핸들러가 없거나 main 이 죽었을 때.
@@ -44,16 +48,48 @@ function Popover(): React.JSX.Element {
     }
   }, [])
 
-  // 열릴 때마다 한 번 읽고, 열려 있는 동안 주기적으로 갱신한다.
-  // 팝오버는 닫히면 창이 숨겨질 뿐 살아 있으므로, main 이 보낼 때마다
-  // 다시 읽도록 'popover:shown' 도 듣는다.
+  /*
+    보이는 동안에만 폴링한다.
+
+    팝오버는 닫혀도 창이 살아 있어서 타이머가 저절로 멈추지 않는다.
+    그대로 두면 보이지도 않는 값을 1분마다 네트워크로 가져오고, 설정
+    창의 폴링과 합쳐져 분당 2회가 된다 — 실측으로 HTTP 429 를 받았다.
+
+    main 이 보내는 shown/hidden 신호로 타이머를 켜고 끈다. 렌더러의
+    document.hidden 을 쓰지 않는 이유는 숨긴 창에서 그 값이 바뀐다는
+    보장이 없기 때문이다. 창을 숨기는 쪽이 main 이므로 main 이 말해주는
+    것이 확실하다.
+  */
   useEffect(() => {
+    let timer: ReturnType<typeof setInterval> | null = null
+
+    const stop = (): void => {
+      if (timer !== null) {
+        clearInterval(timer)
+        timer = null
+      }
+    }
+
+    const start = (): void => {
+      if (timer !== null) return
+      timer = setInterval(() => void load(), REFRESH_MS)
+    }
+
+    // 첫 표시. main 이 preparePopover 로 미리 띄워 둔 경우에도 한 번 읽는다.
     void load()
-    const timer = setInterval(() => void load(), REFRESH_MS)
-    const off = window.api.onPopoverShown(() => void load())
+    start()
+
+    const offShown = window.api.onPopoverShown(() => {
+      // 닫혀 있던 동안 값이 묵었다. 다시 보일 때 한 번 당겨온다.
+      void load()
+      start()
+    })
+    const offHidden = window.api.onPopoverHidden(stop)
+
     return () => {
-      clearInterval(timer)
-      off()
+      stop()
+      offShown()
+      offHidden()
     }
   }, [load])
 
@@ -90,7 +126,7 @@ function Popover(): React.JSX.Element {
         {usage === null ? (
           <div className="popover-placeholder">사용량 읽는 중…</div>
         ) : (
-          <UsagePanel usage={usage} loading={loading} onRefresh={() => void load()} wide />
+          <UsagePanel usage={usage} loading={loading} onRefresh={() => void load(true)} wide />
         )}
       </div>
       <div className="popover-actions">

@@ -146,12 +146,12 @@ export function App(): React.JSX.Element {
    * 무관하고, 읽기 실패가 자산 목록을 가려서는 안 된다. 실패는 패널 안에서
    * 말한다(상단 배너를 쓰지 않는다).
    */
-  const loadUsage = useCallback(async (silent = false) => {
+  const loadUsage = useCallback(async (silent = false, force = false) => {
     // 자동 갱신은 조용히 돈다. 1분마다 "읽는 중…" 이 깜빡이면 가만히 있는
     // 화면이 분주해 보이고, 사용자가 누르지 않은 동작이라 보고할 것도 없다.
     if (!silent) setUsageLoading(true)
     try {
-      setUsage(await window.api.readUsage())
+      setUsage(await window.api.readUsage(force))
     } catch (err) {
       setUsage({
         ok: false,
@@ -664,7 +664,7 @@ export function App(): React.JSX.Element {
           <UsagePanel
             usage={usage}
             loading={usageLoading}
-            onRefresh={() => void loadUsage()}
+            onRefresh={() => void loadUsage(false, true)}
           />
 
           {/* 맥락: 읽기만 하는 사실들. 서로 붙이고 한 단계 흐리게 둔다. */}

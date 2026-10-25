@@ -23,7 +23,7 @@ const api: AdminApi = {
   installPlugin: (plugin) => ipcRenderer.invoke('admin:installPlugin', plugin),
   updatePlugin: (plugin) => ipcRenderer.invoke('admin:updatePlugin', plugin),
   revealPath: (path) => ipcRenderer.invoke('admin:revealPath', path),
-  readUsage: () => ipcRenderer.invoke('admin:readUsage'),
+  readUsage: (force) => ipcRenderer.invoke('admin:readUsage', force === true),
   openSettings: () => ipcRenderer.invoke('admin:openSettings'),
   quitApp: () => ipcRenderer.invoke('admin:quitApp'),
   /*
@@ -37,6 +37,11 @@ const api: AdminApi = {
     const listener = (): void => handler()
     ipcRenderer.on('popover:shown', listener)
     return () => ipcRenderer.removeListener('popover:shown', listener)
+  },
+  onPopoverHidden: (handler) => {
+    const listener = (): void => handler()
+    ipcRenderer.on('popover:hidden', listener)
+    return () => ipcRenderer.removeListener('popover:hidden', listener)
   },
   // 응답이 필요 없는 통지라 invoke 가 아니라 send 를 쓴다.
   resizePopover: (height) => ipcRenderer.send('popover:resize', height)

@@ -28,6 +28,48 @@ const REQUEST_TIMEOUT_MS = 10_000
 
 const USAGE_URL = 'https://api.anthropic.com/api/oauth/usage'
 
+/**
+ * 캐시 유효 시간.
+ *
+ * 창과 팝오버가 각각 1분마다 호출하면 분당 2회가 되고, 아이콘을 누를
+ * 때마다 한 번이 더해진다. 실측으로 HTTP 429 를 받았다. 둘이 같은
+ * readUsage() 를 거치므로 여기서 한 번 받아 나눠 주면 호출이 분당
+ * 1회로 떨어진다.
+ *
+ * 55초인 이유: 호출 주기(60초)보다 짧아야 한 주기에 한 번은 실제로
+ * 갱신된다. 60초로 맞추면 타이머가 조금만 빨라도 캐시가 계속 살아
+ * 값이 영영 묵는다.
+ */
+const CACHE_TTL_MS = 55_000
+
+/**
+ * 429 를 받은 뒤 쉬는 시간.
+ *
+ * 429 는 "너무 잦다" 는 뜻이라 같은 간격으로 또 치면 풀리지 않는다.
+ * 성공하면 즉시 원복하므로, 한 번 막혔다고 오래 묶이지는 않는다.
+ */
+const BACKOFF_MS = 5 * 60_000
+
+/**
+ * 마지막 조회 결과. 두 창이 나눠 쓴다.
+ *
+ * 실패도 담는다 — 토큰이 없는 상태에서 1분마다 키체인을 다시 읽을
+ * 이유가 없다.
+ */
+let cached: { at: number; result: UsageReadResult } | null = null
+
+/**
+ * 마지막으로 성공한 결과. 실패가 덮어쓰지 않는다.
+ *
+ * 백오프 중에 보여줄 값이다. 429 를 받았다고 화면의 숫자가 오류 문구로
+ * 바뀌면, 사용자는 사용량을 볼 수 없는 것으로 오해한다. 조금 묵은
+ * 숫자를 그대로 두는 편이 낫다.
+ */
+let lastOk: UsageReadResult | null = null
+
+/** 이 시각 전에는 호출하지 않는다. 429 를 받으면 미래로 민다. */
+let blockedUntil = 0
+
 /** 키체인 서비스 이름. Claude Code 가 쓰는 값 그대로다. */
 const KEYCHAIN_SERVICE = 'Claude Code-credentials'
 
@@ -137,7 +179,8 @@ function parseLimit(raw: unknown): UsageLimit | null {
  * 실패는 전부 UsageReadResult 로 돌려준다 — 예외를 renderer 까지 던지지 않는다.
  * reason 으로 원인을 구분해 UI 가 할 말을 고를 수 있게 한다.
  */
-export async function readUsage(): Promise<UsageReadResult> {
+/** 실제 조회. 캐시·백오프는 readUsage() 가 맡는다. */
+async function fetchUsage(): Promise<UsageReadResult> {
   const token = await readAccessToken()
   if (!token) {
     return {
@@ -175,6 +218,23 @@ export async function readUsage(): Promise<UsageReadResult> {
     // 401/403 은 토큰이 만료됐거나 권한이 없다는 뜻이다. Claude Code 가
     // 토큰을 갱신하면 저절로 풀리므로, 그 사실을 알려준다.
     const expired = response.status === 401 || response.status === 403
+
+    /*
+      429 는 호출이 잦다는 뜻이다. 같은 간격으로 또 치면 풀리지 않으므로
+      다음 시도를 뒤로 민다. 사유를 따로 적어 UI 가 "기다리는 중" 이라고
+      말할 수 있게 한다 — 로그인 문제로 오해하면 엉뚱한 곳을 고치게 된다.
+    */
+    if (response.status === 429) {
+      blockedUntil = Date.now() + BACKOFF_MS
+      return {
+        ok: false,
+        reason: 'rate-limit',
+        error: `요청이 잦아 잠시 멈춥니다. ${Math.round(
+          BACKOFF_MS / 60_000
+        )}분 뒤 자동으로 다시 시도합니다.`
+      }
+    }
+
     return {
       ok: false,
       reason: expired ? 'expired' : 'http',
@@ -210,4 +270,68 @@ export async function readUsage(): Promise<UsageReadResult> {
 
   const snapshot: UsageSnapshot = { fetchedAt: new Date().toISOString(), limits }
   return { ok: true, snapshot }
+}
+
+/**
+ * 진행 중인 조회.
+ *
+ * 창과 팝오버가 같은 순간에 부르면 캐시가 아직 비어 있어 둘 다 통과한다.
+ * 그 둘이 각각 네트워크를 치면 캐시를 둔 의미가 없으므로, 먼저 시작한
+ * 약속을 뒤에 온 쪽이 함께 기다린다.
+ */
+let inFlight: Promise<UsageReadResult> | null = null
+
+/**
+ * 사용량을 읽는다. 창과 팝오버가 공유하는 유일한 진입점이다.
+ *
+ * 세 겹으로 호출을 줄인다:
+ *
+ *  1. 캐시 — 55초 안에 받은 값이 있으면 그대로 돌려준다
+ *  2. 백오프 — 429 를 받았으면 쉬는 동안 네트워크를 치지 않는다
+ *  3. 합류 — 동시에 들어온 호출은 하나의 요청을 함께 기다린다
+ *
+ * @param force 사용자가 "다시 시도" 를 눌렀을 때. 캐시를 건너뛴다.
+ *   백오프는 건너뛰지 않는다 — 막힌 동안 수동으로 또 치면 그 사이에
+ *   풀릴 것도 안 풀린다.
+ */
+export async function readUsage(force = false): Promise<UsageReadResult> {
+  const now = Date.now()
+
+  if (!force && cached && now - cached.at < CACHE_TTL_MS) {
+    return cached.result
+  }
+
+  if (now < blockedUntil) {
+    // 쉬는 중이다. 마지막 성공값이 있으면 그것을, 없으면 남은 시간을 알린다.
+    if (lastOk) return lastOk
+    return {
+      ok: false,
+      reason: 'rate-limit',
+      error: `요청이 잦아 잠시 멈춘 상태입니다. ${Math.ceil(
+        (blockedUntil - now) / 60_000
+      )}분 뒤 다시 시도합니다.`
+    }
+  }
+
+  if (inFlight) return inFlight
+
+  inFlight = fetchUsage()
+    .then((result) => {
+      // 성공하면 백오프를 즉시 푼다 — 한 번 막혔다고 오래 묶일 이유가 없다.
+      if (result.ok) {
+        blockedUntil = 0
+        lastOk = result
+      }
+      /*
+        실패도 캐시한다. 토큰이 없거나 만료된 상태에서 1분마다 키체인을
+        다시 읽을 이유가 없고, 429 중에는 직전 값을 돌려줄 근거가 된다.
+      */
+      cached = { at: Date.now(), result }
+      return result
+    })
+    .finally(() => {
+      inFlight = null
+    })
+
+  return inFlight
 }

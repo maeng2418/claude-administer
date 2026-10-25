@@ -446,7 +446,15 @@ export interface UsageSnapshot {
 }
 
 /** 사용량 조회가 실패한 이유. UI 가 할 말을 고르는 데 쓴다. */
-export type UsageFailureReason = 'no-token' | 'expired' | 'network' | 'http' | 'parse' | 'empty'
+export type UsageFailureReason =
+  | 'no-token'
+  | 'expired'
+  | 'network'
+  | 'http'
+  | 'parse'
+  | 'empty'
+  /** 429. 호출이 잦아 스스로 쉬는 중이다. 로그인 문제가 아니다. */
+  | 'rate-limit'
 
 /** 사용량 조회 결과. */
 export type UsageReadResult =
@@ -496,8 +504,15 @@ export interface AdminApi {
   /** 설치된 플러그인을 최신 버전으로 올린다. */
   updatePlugin(plugin: string): Promise<PluginOpResult>
   revealPath(path: string): Promise<{ ok: boolean; error?: string }>
-  /** 구독 사용량을 지금 조회한다. Claude Code 의 로그인 정보를 그대로 쓴다. */
-  readUsage(): Promise<UsageReadResult>
+  /**
+   * 구독 사용량을 조회한다. Claude Code 의 로그인 정보를 그대로 쓴다.
+   *
+   * 결과는 main 에서 짧게 캐시되어 창과 팝오버가 나눠 쓴다.
+   *
+   * @param force 사용자가 "다시 시도" 를 눌렀을 때만 true. 캐시를
+   *   건너뛰되, 429 백오프는 건너뛰지 않는다.
+   */
+  readUsage(force?: boolean): Promise<UsageReadResult>
   /** 설정 창을 연다. 메뉴바 팝오버의 "설정" 이 쓴다. */
   openSettings(): Promise<void>
   /** 앱을 완전히 종료한다. 메뉴바 팝오버의 "종료" 가 쓴다. */
@@ -510,6 +525,15 @@ export interface AdminApi {
    *   하지 않으면 같은 핸들러가 겹겹이 쌓인다.
    */
   onPopoverShown(handler: () => void): () => void
+  /**
+   * 팝오버가 화면에서 사라질 때마다 불린다. 폴링을 멈추라는 신호다.
+   *
+   * 닫혀도 창은 살아 있으므로 타이머가 저절로 멈추지 않는다. 보이지도
+   * 않는 값을 1분마다 가져오면 호출 한도만 쓴다.
+   *
+   * @returns 구독을 끊는 함수. onPopoverShown 과 같은 규칙이다.
+   */
+  onPopoverHidden(handler: () => void): () => void
   /**
    * 팝오버 내용의 높이를 알린다. main 이 창을 그 높이에 맞춘다.
    *
