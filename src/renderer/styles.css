@@ -1315,3 +1315,65 @@ body {
   background: color-mix(in srgb, var(--danger) 16%, transparent);
   color: var(--danger);
 }
+
+/* ---- 사용 판정 필터 ---- */
+/*
+  검색창 옆에 붙는 칩 묶음. 토글이 아니라 라디오다 — 한 번에 한 가지
+  분류만 본다. 여러 개를 겹쳐 고르게 하면 "사용 중이면서 미사용" 같은
+  뜻 없는 조합이 생긴다.
+*/
+.filter-chips {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+
+.chip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.chip-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+/* 고른 칩만 테두리와 글자를 살린다. 배경까지 칠하면 툴바가 시끄럽다. */
+.chip-btn.is-active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--text);
+}
+
+/*
+  개수. 칩 안에서 한 단계 흐리게 둔다 — 라벨이 먼저 읽히고 숫자가
+  따라와야, 무엇을 거르는지부터 눈에 들어온다.
+*/
+.chip-btn-count {
+  color: var(--text-faint);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.chip-btn.is-active .chip-btn-count {
+  color: var(--accent);
+}
+
+/* 미사용이 흩어진 탭으로 건너뛰는 버튼 묶음. */
+.filter-jump {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}

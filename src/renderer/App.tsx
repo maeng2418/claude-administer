@@ -15,7 +15,8 @@ import type {
   MarketplaceAsset,
   ProjectRef,
   UsageReadResult,
-  UsageStats
+  UsageStats,
+  UsageVerdict
 } from '../shared/types.js'
 
 /** 사이드바 탭 정의. 순서가 화면 순서다. */
@@ -93,6 +94,13 @@ export function App(): React.JSX.Element {
   const [busyKey, setBusyKey] = useState<string | null>(null)
   /** 꺼진 자산만 보기. 검색과 함께 걸린다(둘 다 만족하는 것만 남는다). */
   const [offOnly, setOffOnly] = useState(false)
+  /**
+   * 사용 판정 필터.
+   *
+   * 'all' 이 기본이다. 제거할 것을 찾을 때는 'legacy' 로, 쓰이는 것만
+   * 볼 때는 'active' 로 좁힌다.
+   */
+  const [verdictFilter, setVerdictFilter] = useState<'all' | UsageVerdict>('all')
   const [notice, setNotice] = useState<string | null>(null)
   /**
    * 읽기 실패 경고를 닫았는지.
@@ -569,8 +577,52 @@ export function App(): React.JSX.Element {
   const rows = useMemo(() => {
     if (!inventory) return []
     const list = inventory[activeTab.field] as Asset[]
-    return list.filter((a) => matches(a, query) && (!offOnly || a.disabled === true))
-  }, [inventory, activeTab.field, query, offOnly])
+    return list.filter(
+      (a) =>
+        matches(a, query) &&
+        (!offOnly || a.disabled === true) &&
+        (verdictFilter === 'all' || assetVerdict(a)?.verdict === verdictFilter)
+    )
+  }, [inventory, activeTab.field, query, offOnly, verdictFilter, assetVerdict])
+
+  /**
+   * 탭별 판정 개수. 필터 칩에 숫자를 붙이는 데 쓴다.
+   *
+   * 숫자가 없으면 빈 결과를 보고 나서야 "여긴 없구나" 를 안다 —
+   * 미사용이 탭마다 0~9개로 흩어져 있어(실측) 헛걸음이 잦다.
+   */
+  const verdictCounts = useMemo(() => {
+    const out = { all: 0, active: 0, unknown: 0, legacy: 0 }
+    if (!inventory || !usageStats) return out
+    const list = inventory[activeTab.field] as Asset[]
+    for (const asset of list) {
+      if (!matches(asset, query)) continue
+      if (offOnly && asset.disabled !== true) continue
+      out.all++
+      const v = assetVerdict(asset)
+      if (v) out[v.verdict]++
+    }
+    return out
+  }, [inventory, usageStats, activeTab.field, query, offOnly, assetVerdict])
+
+  /**
+   * 모든 탭을 가로질러 센 미사용 개수.
+   *
+   * 미사용이 한 탭에 몰려 있지 않아서(실측: 스킬 4 · 커맨드 6 ·
+   * 에이전트 9) 탭을 일일이 눌러봐야 한다. 어디에 몇 개인지 먼저
+   * 보여주면 그 수고가 없어진다.
+   */
+  const legacyByTab = useMemo(() => {
+    if (!inventory || !usageStats) return []
+    return TABS.map((t) => {
+      const list = inventory[t.field] as Asset[]
+      let n = 0
+      for (const asset of list) {
+        if (assetVerdict(asset)?.verdict === 'legacy') n++
+      }
+      return { kind: t.kind, label: t.label, count: n }
+    }).filter((t) => t.count > 0)
+  }, [inventory, usageStats, assetVerdict])
 
   /**
    * 사이드바 집계.
@@ -792,6 +844,50 @@ export function App(): React.JSX.Element {
             aria-label={`${activeTab.label} 검색`}
           />
           {/*
+            사용 판정 필터.
+
+            검색창 바로 옆에 둔다 — 검색과 같은 "목록을 좁히는" 동작이라
+            떨어뜨리면 두 가지를 다른 곳에서 찾게 된다.
+
+            개수를 칩에 적는다. 없으면 눌러서 빈 목록을 보고 나서야
+            "여긴 없구나" 를 알게 되는데, 미사용이 탭마다 0~9개로
+            흩어져 있어(실측) 그 헛걸음이 잦다.
+          */}
+          {usageStats && USAGE_TABS.has(tab) && (
+            <div className="filter-chips" role="group" aria-label="사용 여부로 거르기">
+              {(
+                [
+                  ['all', '전체'],
+                  ['active', '사용 중'],
+                  ['unknown', '판단 보류'],
+                  ['legacy', '미사용']
+                ] as const
+              ).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  className={`chip-btn${verdictFilter === key ? ' is-active' : ''}`}
+                  aria-pressed={verdictFilter === key}
+                  // 0건인 칩은 누를 수 있게 두되 흐리게 — 숫자 자체가 정보다.
+                  onClick={() => setVerdictFilter(key)}
+                  title={
+                    key === 'legacy'
+                      ? `최근 ${usageStats.retentionDays}일 기록에 호출이 없는 자산만 봅니다`
+                      : key === 'unknown'
+                        ? '호출 기록은 없지만 설치가 최근이라 판단을 보류한 자산입니다'
+                        : key === 'active'
+                          ? '기록 구간 안에 쓰인 자산만 봅니다'
+                          : '거르지 않고 모두 봅니다'
+                  }
+                >
+                  {label}
+                  <span className="chip-btn-count">{verdictCounts[key]}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/*
             추가 버튼은 보고 있는 탭에만 둔다. 두 버튼을 늘 띄우면 스킬
             목록을 보는 중에도 "플러그인 설치" 가 보여서, 지금 화면과
             상관없는 동작이 상관있는 것처럼 읽힌다.
@@ -886,6 +982,34 @@ export function App(): React.JSX.Element {
           )}
 
           {/*
+            미사용이 흩어진 곳 안내.
+
+            'legacy' 로 거르는 중에만 띄운다. 그때가 "지울 것을 찾는"
+            순간이고, 미사용이 한 탭에 몰려 있지 않아(실측: 스킬 4 ·
+            커맨드 6 · 에이전트 9) 탭을 하나씩 눌러보게 되기 때문이다.
+          */}
+          {verdictFilter === 'legacy' && legacyByTab.length > 0 && (
+            <div className="banner banner-filter" role="status">
+              <span>
+                미사용 {legacyByTab.reduce((n, t) => n + t.count, 0)}개가 탭{' '}
+                {legacyByTab.length}곳에 있습니다.
+              </span>
+              <span className="filter-jump">
+                {legacyByTab.map((t) => (
+                  <button
+                    key={t.kind}
+                    type="button"
+                    className={`btn btn-sm${t.kind === tab ? ' btn-on' : ''}`}
+                    onClick={() => setTab(t.kind)}
+                  >
+                    {t.label} {t.count}
+                  </button>
+                ))}
+              </span>
+            </div>
+          )}
+
+          {/*
             집계 범위 고지.
 
             "미사용" 배지가 뜨는 탭에만 둔다. 이 배지는 "최근 N일 기록에
@@ -945,7 +1069,15 @@ export function App(): React.JSX.Element {
 
           {!loading && rows.length === 0 && (
             <div className="state">
-              {offOnly
+              {verdictFilter !== 'all'
+                ? `이 탭에는 ${
+                    verdictFilter === 'legacy'
+                      ? '미사용'
+                      : verdictFilter === 'unknown'
+                        ? '판단 보류'
+                        : '사용 중인'
+                  } ${activeTab.label} 이 없습니다.`
+                : offOnly
                 ? `이 탭에는 꺼진 ${activeTab.label} 이 없습니다. 다른 탭을 눌러보세요.`
                 : query === ''
                   ? `${activeTab.label} 자산이 없습니다.`
