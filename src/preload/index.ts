@@ -24,6 +24,8 @@ const api: AdminApi = {
   updatePlugin: (plugin) => ipcRenderer.invoke('admin:updatePlugin', plugin),
   revealPath: (path) => ipcRenderer.invoke('admin:revealPath', path),
   readUsage: (force) => ipcRenderer.invoke('admin:readUsage', force === true),
+  readUsageStats: (refresh) =>
+    ipcRenderer.invoke('admin:readUsageStats', refresh === true),
   openSettings: () => ipcRenderer.invoke('admin:openSettings'),
   quitApp: () => ipcRenderer.invoke('admin:quitApp'),
   /*

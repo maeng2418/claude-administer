@@ -461,6 +461,50 @@ export type UsageReadResult =
   | { ok: true; snapshot: UsageSnapshot }
   | { ok: false; reason: UsageFailureReason; error: string }
 
+/** 자산 하나의 사용 기록. */
+export interface AssetUsage {
+  /** 스캔한 세션에서 호출된 횟수. */
+  count: number
+  /** 마지막으로 쓰인 시각 (세션 파일 수정 시각으로 근사). */
+  lastUsedAt: string
+}
+
+/**
+ * 자산 사용량 집계.
+ *
+ * 규칙은 포함하지 않는다. 규칙은 도구 호출이 아니라 컨텍스트 주입이라
+ * 실행 기록이 남지 않아, 0회를 "안 쓰임" 으로 읽으면 전부 레거시가 된다.
+ */
+export interface UsageStats {
+  scannedAt: string
+  /** 실제로 읽은 세션 수. */
+  sessionsScanned: number
+  /** 디스크에 있는 전체 세션 수. scanned 보다 크면 표본이다. */
+  sessionsTotal: number
+  /**
+   * 기록 구간. "0회" 가 "안 쓰임" 인지 "기록이 그만큼 없음" 인지
+   * 가르는 근거다 — 이 값 없이 레거시를 판정하면 안 된다.
+   */
+  oldestSessionAt: string | null
+  newestSessionAt: string | null
+  skills: Record<string, AssetUsage>
+  commands: Record<string, AssetUsage>
+  agents: Record<string, AssetUsage>
+  hooks: Record<string, AssetUsage>
+}
+
+/**
+ * 자산의 사용 분류.
+ *
+ *  - active: 기록 구간 안에서 쓰였다
+ *  - unknown: 0회지만 기록 구간이 짧거나 설치가 최근이라 판단을 보류한다
+ *  - legacy: 0회 + 설치·수정이 기록 구간보다 오래됐다 — 검토 대상
+ *
+ * legacy 는 "지우세요" 가 아니라 "확인해 보세요" 다. 기록이 짧으면
+ * 가끔 쓰는 자산도 여기 들어온다.
+ */
+export type UsageVerdict = 'active' | 'unknown' | 'legacy'
+
 /** renderer 가 preload 를 통해 쓸 수 있는 API. window.api 로 노출된다. */
 export interface AdminApi {
   /** @param projectPath 스캔할 프로젝트 루트. 생략하면 전역 자산만 읽는다. */
@@ -513,6 +557,11 @@ export interface AdminApi {
    *   건너뛰되, 429 백오프는 건너뛰지 않는다.
    */
   readUsage(force?: boolean): Promise<UsageReadResult>
+  /**
+   * 자산 사용량을 집계한다. 세션 기록을 훑으므로 느리다 — main 이
+   * 캐시하고, refresh 로만 다시 읽는다.
+   */
+  readUsageStats(refresh?: boolean): Promise<UsageStats>
   /** 설정 창을 연다. 메뉴바 팝오버의 "설정" 이 쓴다. */
   openSettings(): Promise<void>
   /** 앱을 완전히 종료한다. 메뉴바 팝오버의 "종료" 가 쓴다. */

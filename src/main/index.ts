@@ -7,6 +7,7 @@ import { removeAsset } from './remove.js'
 import { runPluginOp } from './plugin-cli.js'
 import { collectCatalog, type CatalogTarget } from './catalog.js'
 import { readUsage } from './usage.js'
+import { collectUsageStats } from './usage-stats.js'
 import { createTray, destroyTray } from './tray.js'
 import { destroyPopover, hidePopover, preparePopover, resizePopoverTo } from './popover.js'
 import type {
@@ -21,7 +22,8 @@ import type {
   ToggleMechanism,
   ToggleRequest,
   ToggleResult,
-  UsageReadResult
+  UsageReadResult,
+  UsageStats
 } from '../shared/types.js'
 import { readFile } from 'node:fs/promises'
 
@@ -266,6 +268,9 @@ function parseRemoveRequest(raw: unknown): RemoveRequest | string {
  * 하므로 빈 객체를 쓰지 않는다 — 카탈로그가 실제로 비어 있을 수 있다.
  */
 let catalogCache: CatalogResult | null = null
+
+/** 자산 사용량 집계 캐시. 세션 기록 스캔이 느려 한 번만 돈다. */
+let usageStatsCache: UsageStats | null = null
 
 /**
  * 레지스트리에서 카탈로그 대상을 모아 읽는다.
@@ -604,6 +609,21 @@ function registerHandlers(): void {
     캐시만 건너뛴다 — 429 백오프까지 건너뛰면 막힌 상태에서 사용자가
     버튼을 연타할 때 그 사이에 풀릴 것도 안 풀린다.
   */
+  /*
+    자산 사용량. 세션 기록 600개를 훑어 실측 5초가 걸리므로 캐시한다 —
+    탭을 옮길 때마다 다시 돌 이유가 없다.
+  */
+  ipcMain.handle(
+    'admin:readUsageStats',
+    async (_event, refresh: unknown): Promise<UsageStats> => {
+      if (refresh === true) usageStatsCache = null
+      if (usageStatsCache) return usageStatsCache
+      const stats = await collectUsageStats()
+      usageStatsCache = stats
+      return stats
+    }
+  )
+
   ipcMain.handle(
     'admin:readUsage',
     async (_event, force: unknown): Promise<UsageReadResult> => readUsage(force === true)
