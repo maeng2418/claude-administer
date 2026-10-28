@@ -140,8 +140,24 @@ function showWindow(): void {
   const reveal = (): void => {
     if (window.isDestroyed()) return
     if (window.isMinimized()) window.restore()
+
+    /*
+      지금 보고 있는 데스크탑(Space)에서 열리게 한다.
+
+      이 창은 앱 시작 때 한 번 만들어 숨겨두고 재사용하므로, 아무 처리가
+      없으면 "처음 만들어진 Space" 에 묶인다. 다른 데스크탑에서 트레이의
+      '설정' 을 누르면 macOS 가 화면을 그 Space 로 전환해버려, 누른 사람은
+      보던 화면이 통째로 바뀐다.
+
+      켜둔 채로 두지 않고 보여준 뒤 바로 끄는 이유: 계속 켜두면 설정 창이
+      모든 데스크탑을 따라다녀 일반 창처럼 쓸 수 없다. 띄울 때만 현재
+      Space 로 따라오고, 그다음부터는 그 자리에 머문다.
+    */
+    window.setVisibleOnAllWorkspaces(true)
     window.show()
     window.focus()
+    window.setVisibleOnAllWorkspaces(false)
+
     // Dock 을 숨긴 상태에서는 창을 show 해도 앱이 활성화되지 않는다.
     // 이 호출 없이는 창이 다른 앱 뒤에 뜬다.
     app.focus({ steal: true })
