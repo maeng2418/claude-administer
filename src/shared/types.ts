@@ -507,6 +507,8 @@ export interface UsageStats {
   commands: Record<string, AssetUsage>
   agents: Record<string, AssetUsage>
   hooks: Record<string, AssetUsage>
+  /** MCP 서버별 도구 호출 수. 서버 자체는 호출되지 않으므로 도구로 센다. */
+  mcp: Record<string, AssetUsage>
 }
 
 /**

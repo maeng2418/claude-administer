@@ -36,7 +36,14 @@ const TABS: { kind: AssetKind; label: string; field: keyof Inventory }[] = [
  * 호출 기록이 남는 자산만이다. 플러그인·MCP·마켓플레이스는 설치
  * 단위라 호출이 없고, 규칙은 컨텍스트 주입이라 기록이 남지 않는다.
  */
-const USAGE_TABS = new Set<AssetKind>(['skill', 'command', 'agent', 'hook'])
+const USAGE_TABS = new Set<AssetKind>([
+  'skill',
+  'command',
+  'agent',
+  'hook',
+  'plugin',
+  'mcp'
+])
 
 /** 검색어가 자산의 어느 필드든 걸리는지 본다. */
 function matches(asset: Asset, query: string): boolean {
@@ -524,10 +531,31 @@ export function App(): React.JSX.Element {
    * 수정 시각을 함께 넘긴다. 없으면 0회가 전부 레거시로 떨어져
    * 실측에서 157개가 "미사용" 으로 찍혔다 — 방금 설치한 것까지 포함해서다.
    */
+  /**
+   * 플러그인 판정에 쓸 전체 자산.
+   *
+   * 플러그인은 직접 호출되지 않아 제공 자산의 호출로 역산한다 —
+   * 그러려면 어느 자산이 그 플러그인에서 왔는지 전부 볼 수 있어야 한다.
+   */
+  const allAssets = useMemo(
+    () =>
+      inventory
+        ? [
+            ...inventory.skills,
+            ...inventory.commands,
+            ...inventory.agents,
+            ...inventory.mcp
+          ]
+        : [],
+    [inventory]
+  )
+
   const assetVerdict = useCallback(
     (asset: Asset) =>
-      usageStats ? verdictFor(asset, usageStats, asset.modifiedAt) : null,
-    [usageStats]
+      usageStats
+        ? verdictFor(asset, usageStats, asset.modifiedAt, allAssets)
+        : null,
+    [usageStats, allAssets]
   )
 
   const activeTab = TABS.find((t) => t.kind === tab) ?? TABS[0]!

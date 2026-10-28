@@ -23,7 +23,14 @@ import type { AssetUsage, UsageStats } from '../shared/types.js'
  * 걸리는데, 우리가 찾는 줄은 전체의 몇 퍼센트뿐이다. 문자열 검사로
  * 먼저 걸러 파싱 횟수를 줄인다.
  */
-const LINE_HINTS = ['"Skill"', '"Agent"', 'invoked_skills', 'command-name', 'hookName']
+const LINE_HINTS = [
+  '"Skill"',
+  '"Agent"',
+  'invoked_skills',
+  'command-name',
+  'hookName',
+  'mcp__'
+]
 
 /** 한 세션 파일에서 모은 호출. */
 interface FileCounts {
@@ -31,6 +38,7 @@ interface FileCounts {
   commands: Map<string, number>
   agents: Map<string, number>
   hooks: Map<string, number>
+  mcp: Map<string, number>
   /** 이 파일에서 본 마지막 사용 시각(파일 수정 시각으로 근사). */
   at: number
 }
@@ -67,6 +75,7 @@ async function scanSession(path: string, at: number): Promise<FileCounts> {
     commands: new Map(),
     agents: new Map(),
     hooks: new Map(),
+    mcp: new Map(),
     at
   }
 
@@ -137,6 +146,17 @@ async function scanSession(path: string, at: number): Promise<FileCounts> {
         const b = block as Record<string, unknown>
         if (b['type'] !== 'tool_use') continue
         const input = (b['input'] ?? {}) as Record<string, unknown>
+
+        /*
+          MCP 서버는 도구 이름으로 드러난다: `mcp__<서버>__<도구>`.
+          서버 자체는 호출 대상이 아니라서, 그 서버가 제공한 도구가
+          쓰였는지로 판단한다.
+        */
+        const toolName = b['name']
+        if (typeof toolName === 'string' && toolName.startsWith('mcp__')) {
+          const server = toolName.split('__')[1]
+          if (server) bump(counts.mcp, [server])
+        }
 
         if (b['name'] === 'Skill') bump(counts.skills, nameKeys(input['skill']))
         if (b['name'] === 'Agent') {
@@ -291,6 +311,7 @@ export async function collectUsageStats(projectRoot?: string | null): Promise<Us
   const commands = new Map<string, { count: number; lastAt: number }>()
   const agents = new Map<string, { count: number; lastAt: number }>()
   const hooks = new Map<string, { count: number; lastAt: number }>()
+  const mcp = new Map<string, { count: number; lastAt: number }>()
 
   const merge = (
     into: Map<string, { count: number; lastAt: number }>,
@@ -326,6 +347,7 @@ export async function collectUsageStats(projectRoot?: string | null): Promise<Us
       merge(commands, r.commands, r.at)
       merge(agents, r.agents, r.at)
       merge(hooks, r.hooks, r.at)
+      merge(mcp, r.mcp, r.at)
     }
   }
 
@@ -341,6 +363,7 @@ export async function collectUsageStats(projectRoot?: string | null): Promise<Us
     skills: toUsage(skills),
     commands: toUsage(commands),
     agents: toUsage(agents),
-    hooks: toUsage(hooks)
+    hooks: toUsage(hooks),
+    mcp: toUsage(mcp)
   }
 }

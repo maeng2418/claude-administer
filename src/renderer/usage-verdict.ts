@@ -38,10 +38,58 @@ function usageFor(stats: UsageStats, asset: Asset): Record<string, AssetUsage> |
       return stats.agents
     case 'hook':
       return stats.hooks
+    case 'mcp':
+      return stats.mcp
     default:
-      // 플러그인·MCP·마켓플레이스·규칙은 호출 기록이 없다.
+      /*
+        플러그인·마켓플레이스·규칙은 이 맵으로 못 푼다. 플러그인은
+        아래에서 제공 자산을 합산해 따로 판정하고, 마켓플레이스는
+        플러그인의 출처일 뿐이며, 규칙은 호출 자체가 없다.
+      */
       return null
   }
+}
+
+/**
+ * 플러그인이 실제로 쓰이는지, 그것이 제공한 자산의 호출로 역산한다.
+ *
+ * 플러그인은 직접 호출되는 대상이 아니다. 스킬·커맨드·에이전트·MCP 를
+ * 제공할 뿐이라, 그중 하나라도 쓰였으면 그 플러그인은 쓰인 것이다.
+ *
+ * MCP 를 빼먹으면 안 된다. 실측에서 project-plugin 은 스킬·커맨드 호출이
+ * 0회인데 MCP 도구는 57회 쓰였다 — 스킬만 세면 멀쩡한 플러그인이
+ * 미사용으로 찍힌다.
+ */
+function pluginCount(
+  pluginId: string,
+  stats: UsageStats,
+  provided: Asset[]
+): { count: number; lastUsedAt?: string } {
+  let count = 0
+  let last = ''
+
+  const take = (hit: AssetUsage | undefined): void => {
+    if (!hit) return
+    count += hit.count
+    if (hit.lastUsedAt > last) last = hit.lastUsedAt
+  }
+
+  for (const asset of provided) {
+    if (!('sourcePlugin' in asset) || asset.sourcePlugin !== pluginId) continue
+    const map = usageFor(stats, asset)
+    if (map) take(lookup(map, asset))
+  }
+
+  /*
+    플러그인이 띄운 MCP 서버. 도구 이름의 서버 부분이 `plugin_<이름>_<서버>`
+    형태라, 플러그인 이름이 들어간 서버를 그 플러그인 것으로 본다.
+  */
+  const bare = pluginId.split('@')[0] ?? pluginId
+  for (const [server, usage] of Object.entries(stats.mcp)) {
+    if (server === bare || server.includes(bare.replace(/-/g, '_'))) take(usage)
+  }
+
+  return last ? { count, lastUsedAt: last } : { count }
 }
 
 /**
@@ -87,8 +135,29 @@ function lookup(map: Record<string, AssetUsage>, asset: Asset): AssetUsage | und
 export function verdictFor(
   asset: Asset,
   stats: UsageStats,
-  mtimeMs?: number
+  mtimeMs?: number,
+  /** 플러그인 판정에 쓸 전체 자산 목록. 플러그인 행에만 필요하다. */
+  allAssets?: Asset[]
 ): VerdictResult | null {
+  // 플러그인은 제공 자산의 호출로 역산한다.
+  if (asset.kind === 'plugin') {
+    if (!allAssets) return null
+    const rolled = pluginCount(asset.id, stats, allAssets)
+    if (rolled.count > 0) {
+      return {
+        verdict: 'active',
+        count: rolled.count,
+        ...(rolled.lastUsedAt ? { lastUsedAt: rolled.lastUsedAt } : {}),
+        reason: `이 플러그인이 제공한 자산이 최근 ${stats.retentionDays}일에 ${rolled.count}회 쓰였습니다.`
+      }
+    }
+    return {
+      verdict: 'unknown',
+      count: 0,
+      reason: `최근 ${stats.retentionDays}일 기록에 이 플러그인의 자산 호출이 없습니다. 다만 출력 스타일이나 훅으로 동작하는 플러그인은 호출 기록이 남지 않으므로, 이것만으로 미사용이라 단정할 수 없습니다.`
+    }
+  }
+
   const map = usageFor(stats, asset)
   if (!map) return null
 
