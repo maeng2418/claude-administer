@@ -1,5 +1,5 @@
 import { createReadStream } from 'node:fs'
-import { readdir, stat } from 'node:fs/promises'
+import { readFile, readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { userClaudeRoot } from './scanner.js'
@@ -211,6 +211,56 @@ function toUsage(
 /** 세션 파일을 읽을 최대 개수. 전수는 느리고, 최신 쪽이 판단에 더 쓸모 있다. */
 const MAX_FILES = 600
 
+/** Claude Code 가 세션 기록을 지우기까지의 기본 일수. */
+const DEFAULT_RETENTION_DAYS = 30
+
+/**
+ * 세션 기록 보존 기간을 읽는다.
+ *
+ * 스코프 우선순위는 Claude Code 와 같다: 관리자 정책이 가장 세고,
+ * 그다음 프로젝트, 사용자 순이다. 어디에도 없으면 기본 30일이다.
+ *
+ * 이 값을 집계에 담는 이유는 "0회" 의 뜻이 창 길이에 달려 있기
+ * 때문이다. 30일 창에서 0회인 것과 1년 창에서 0회인 것은 전혀 다른
+ * 근거다 — 숫자를 보여주지 않으면 사용자가 그 차이를 알 수 없다.
+ */
+async function readRetention(
+  root: string,
+  projectRoot: string | null
+): Promise<{ days: number; source: UsageStats['retentionSource'] }> {
+  const read = async (path: string): Promise<number | null> => {
+    try {
+      const parsed = JSON.parse(await readFile(path, 'utf8')) as Record<string, unknown>
+      const value = parsed['cleanupPeriodDays']
+      // 0 이하는 Claude Code 가 거부하는 값이다. 그런 설정은 없는 것으로 본다.
+      return typeof value === 'number' && Number.isFinite(value) && value > 0
+        ? Math.round(value)
+        : null
+    } catch {
+      return null
+    }
+  }
+
+  const managed = await read(
+    '/Library/Application Support/ClaudeCode/managed-settings.json'
+  )
+  if (managed !== null) return { days: managed, source: 'managed' }
+
+  if (projectRoot) {
+    for (const name of ['settings.json', 'settings.local.json']) {
+      const found = await read(join(projectRoot, name))
+      if (found !== null) return { days: found, source: 'project' }
+    }
+  }
+
+  for (const name of ['settings.json', 'settings.local.json']) {
+    const found = await read(join(root, name))
+    if (found !== null) return { days: found, source: 'user' }
+  }
+
+  return { days: DEFAULT_RETENTION_DAYS, source: 'default' }
+}
+
 /**
  * 사용량을 집계한다.
  *
@@ -218,8 +268,23 @@ const MAX_FILES = 600
  * "기록이 그만큼 없음" 인지는 구간을 봐야 갈리기 때문이다 — 실측 기록은
  * 22일치뿐이라, 분기에 한 번 쓰는 자산은 구간을 모르면 레거시로 오판된다.
  */
-export async function collectUsageStats(): Promise<UsageStats> {
-  const files = await sessionFiles(userClaudeRoot())
+export async function collectUsageStats(projectRoot?: string | null): Promise<UsageStats> {
+  const root = userClaudeRoot()
+  const [all, retention] = await Promise.all([
+    sessionFiles(root),
+    readRetention(root, projectRoot ?? null)
+  ])
+
+  /*
+    보존 창 밖의 파일은 세지 않는다. Claude Code 가 곧 지울 기록이고,
+    그것을 섞으면 "최근 N일" 이라는 말과 실제 집계가 어긋난다.
+
+    창 안에 파일이 하나도 없으면(막 정리된 직후) 그래도 최신 것부터
+    본다 — 빈 결과보다는 표본이라도 있는 편이 낫다.
+  */
+  const cutoff = Date.now() - retention.days * 86_400_000
+  const inWindow = all.filter((f) => f.at >= cutoff)
+  const files = inWindow.length > 0 ? inWindow : all
   const scanned = files.slice(0, MAX_FILES)
 
   const skills = new Map<string, { count: number; lastAt: number }>()
@@ -269,6 +334,8 @@ export async function collectUsageStats(): Promise<UsageStats> {
     scannedAt: new Date().toISOString(),
     sessionsScanned: scanned.length,
     sessionsTotal: files.length,
+    retentionDays: retention.days,
+    retentionSource: retention.source,
     oldestSessionAt: times.length ? new Date(Math.min(...times)).toISOString() : null,
     newestSessionAt: times.length ? new Date(Math.max(...times)).toISOString() : null,
     skills: toUsage(skills),

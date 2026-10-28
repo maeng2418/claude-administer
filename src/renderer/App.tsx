@@ -7,13 +7,15 @@ import { PlusIcon, RefreshIcon } from './components/Icons.js'
 import { ProjectManager } from './components/ProjectManager.js'
 import { ProjectPicker } from './components/ProjectPicker.js'
 import { UsagePanel } from './components/UsagePanel.js'
+import { verdictFor } from './usage-verdict.js'
 import type {
   Asset,
   AssetKind,
   Inventory,
   MarketplaceAsset,
   ProjectRef,
-  UsageReadResult
+  UsageReadResult,
+  UsageStats
 } from '../shared/types.js'
 
 /** 사이드바 탭 정의. 순서가 화면 순서다. */
@@ -27,6 +29,14 @@ const TABS: { kind: AssetKind; label: string; field: keyof Inventory }[] = [
   { kind: 'marketplace', label: '마켓플레이스', field: 'marketplaces' },
   { kind: 'rule', label: '규칙', field: 'rules' }
 ]
+
+/**
+ * 사용 판정이 가능한 탭.
+ *
+ * 호출 기록이 남는 자산만이다. 플러그인·MCP·마켓플레이스는 설치
+ * 단위라 호출이 없고, 규칙은 컨텍스트 주입이라 기록이 남지 않는다.
+ */
+const USAGE_TABS = new Set<AssetKind>(['skill', 'command', 'agent', 'hook'])
 
 /** 검색어가 자산의 어느 필드든 걸리는지 본다. */
 function matches(asset: Asset, query: string): boolean {
@@ -103,6 +113,9 @@ export function App(): React.JSX.Element {
   const [usage, setUsage] = useState<UsageReadResult | null>(null)
   const [usageLoading, setUsageLoading] = useState(false)
 
+  /** 자산 사용량 집계. 세션 기록을 훑으므로 화면이 뜬 뒤 따로 읽는다. */
+  const [usageStats, setUsageStats] = useState<UsageStats | null>(null)
+
   /** 자산을 다시 읽는다. 프로젝트 경로가 null 이면 전역만 읽는다. */
   const scan = useCallback(async (projectPath: string | null) => {
     setLoading(true)
@@ -161,6 +174,21 @@ export function App(): React.JSX.Element {
     } finally {
       if (!silent) setUsageLoading(false)
     }
+  }, [])
+
+  /*
+    사용량 집계는 스캔과 분리해서 읽는다. 세션 기록 600개를 훑어 실측
+    5초가 걸리는데, 그동안 자산 목록까지 비어 있으면 앱이 멈춘 것처럼
+    보인다. 목록을 먼저 띄우고 배지는 나중에 채운다.
+  */
+  useEffect(() => {
+    void (async () => {
+      try {
+        setUsageStats(await window.api.readUsageStats())
+      } catch {
+        // 집계 실패는 배지가 안 뜨는 것으로 끝난다. 목록은 그대로 쓸 수 있다.
+      }
+    })()
   }, [])
 
   useEffect(() => {
@@ -490,6 +518,18 @@ export function App(): React.JSX.Element {
     if (result.ok) await scan(selected)
   }, [scan, selected])
 
+  /**
+   * 행 하나의 사용 판정.
+   *
+   * 수정 시각을 함께 넘긴다. 없으면 0회가 전부 레거시로 떨어져
+   * 실측에서 157개가 "미사용" 으로 찍혔다 — 방금 설치한 것까지 포함해서다.
+   */
+  const assetVerdict = useCallback(
+    (asset: Asset) =>
+      usageStats ? verdictFor(asset, usageStats, asset.modifiedAt) : null,
+    [usageStats]
+  )
+
   const activeTab = TABS.find((t) => t.kind === tab) ?? TABS[0]!
 
   /** 꺼진 자산 보기로 전환. 어느 탭에 몇 개인지 모르므로 스킬 탭부터 보여준다. */
@@ -818,6 +858,35 @@ export function App(): React.JSX.Element {
           )}
 
           {/*
+            집계 범위 고지.
+
+            "미사용" 배지가 뜨는 탭에만 둔다. 이 배지는 "최근 N일 기록에
+            호출이 없다" 는 뜻이지 "쓸모없다" 가 아닌데, 그 N 을 모르면
+            사용자가 전자를 후자로 읽는다. 기록은 보존 기간이 지나면
+            지워지므로, 그 숫자가 곧 판정의 한계다.
+          */}
+          {usageStats && USAGE_TABS.has(tab) && (
+            <div className="content-note">
+              사용 판정은 최근 <b>{usageStats.retentionDays}일</b> 기록(세션{' '}
+              {usageStats.sessionsScanned}개
+              {usageStats.sessionsTotal > usageStats.sessionsScanned
+                ? ` / ${usageStats.sessionsTotal}개 중`
+                : ''}
+              ) 기준입니다
+              {usageStats.retentionSource === 'default'
+                ? ' (Claude Code 기본값)'
+                : usageStats.retentionSource === 'project'
+                  ? ' (프로젝트 설정)'
+                  : usageStats.retentionSource === 'managed'
+                    ? ' (관리자 정책)'
+                    : ' (사용자 설정)'}
+              . 더 오래된 기록은 Claude Code 가 지우므로,{' '}
+              <b>미사용</b>은 &quot;그 기간에 안 쓰였다&quot;는 뜻입니다 — 분기에 한 번
+              쓰는 자산도 여기 들어옵니다.
+            </div>
+          )}
+
+          {/*
             탭 설명. 작업 결과가 아니라 늘 참인 사실이라 배너로 두지 않는다 —
             배너는 닫을 수 있어야 하는데, 이건 닫으면 되살릴 방법이 없다.
             목록 위에 흐린 작은 글씨로 두어 필요할 때 읽히되 알림과 섞이지 않게 한다.
@@ -865,6 +934,7 @@ export function App(): React.JSX.Element {
             onGoToPlugin={handleGoToPlugin}
             onGoToMarketplacePlugins={handleGoToMarketplacePlugins}
             onRemove={handleRemove}
+            verdictFor={assetVerdict}
             onAutoUpdate={(asset, next) => void handleAutoUpdate(asset, next)}
             onUpdateNow={(asset) => void handleUpdateNow(asset)}
             busyKey={busyKey}

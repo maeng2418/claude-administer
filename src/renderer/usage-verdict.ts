@@ -98,7 +98,7 @@ export function verdictFor(
       verdict: 'active',
       count: hit.count,
       lastUsedAt: hit.lastUsedAt,
-      reason: `최근 ${stats.sessionsScanned}개 세션에서 ${hit.count}회 쓰였습니다.`
+      reason: `최근 ${stats.retentionDays}일(세션 ${stats.sessionsScanned}개)에서 ${hit.count}회 쓰였습니다.`
     }
   }
 
@@ -133,6 +133,6 @@ export function verdictFor(
   return {
     verdict: 'legacy',
     count: 0,
-    reason: `최근 ${days}일 기록(세션 ${stats.sessionsScanned}개)에 호출이 없습니다. 더 가끔 쓰는 자산일 수 있으니 지우기 전에 확인하세요.`
+    reason: `최근 ${stats.retentionDays}일 기록(세션 ${stats.sessionsScanned}개, 실제 구간 ${days}일)에 호출이 없습니다. 기록은 ${stats.retentionDays}일만 보존되므로 더 가끔 쓰는 자산일 수 있습니다. 지우기 전에 확인하세요.`
   }
 }

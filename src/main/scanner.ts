@@ -6,6 +6,7 @@ import { collectMarketplaces } from './marketplaces.js'
 import type {
   AgentAsset,
   Asset,
+  AssetBase,
   CommandAsset,
   HookAsset,
   Inventory,
@@ -542,6 +543,38 @@ async function scanPlugins(
 }
 
 // ---------------------------------------------------------------------------
+// 수정 시각 채우기
+// ---------------------------------------------------------------------------
+
+/**
+ * 자산들의 파일 수정 시각을 한 번에 채운다.
+ *
+ * 스캐너마다 stat 을 부르지 않고 마지막에 모아 처리하는 이유는 두 가지다.
+ * 하나는 빠뜨림 — 자산 종류가 여덟이라 한 곳만 놓쳐도 그 탭에서 판정이
+ * 달라진다. 다른 하나는 중복 — 훅은 전부 같은 settings.json 을 가리켜서
+ * 각자 stat 을 부르면 같은 파일을 수십 번 읽는다. 경로별로 한 번만 읽는다.
+ */
+async function fillModifiedAt(assets: AssetBase[]): Promise<void> {
+  const paths = [...new Set(assets.map((a) => a.path))]
+  const times = new Map<string, number>()
+
+  await Promise.all(
+    paths.map(async (path) => {
+      try {
+        times.set(path, (await stat(path)).mtimeMs)
+      } catch {
+        // 읽는 중 사라졌거나 권한이 없다. 그 자산은 판정이 보류로 간다.
+      }
+    })
+  )
+
+  for (const asset of assets) {
+    const at = times.get(asset.path)
+    if (at !== undefined) asset.modifiedAt = at
+  }
+}
+
+// ---------------------------------------------------------------------------
 // 규칙
 // ---------------------------------------------------------------------------
 
@@ -817,7 +850,7 @@ export async function scanInventory(project?: ProjectRef | null): Promise<Invent
     )
   }
 
-  return {
+  const inventory: Inventory = {
     scannedAt: new Date().toISOString(),
     userRoot,
     projectRoot,
@@ -838,4 +871,22 @@ export async function scanInventory(project?: ProjectRef | null): Promise<Invent
     marketplaces,
     issues: issues.items
   }
+
+  /*
+    수정 시각은 마지막에 한 번에 채운다. 사용 판정이 "기록보다 나중에
+    생긴 파일" 을 레거시에서 빼내는 데 쓴다 — 이 값이 없으면 방금 설치한
+    자산도 전부 미사용으로 찍힌다.
+  */
+  await fillModifiedAt([
+    ...inventory.skills,
+    ...inventory.agents,
+    ...inventory.commands,
+    ...inventory.hooks,
+    ...inventory.rules,
+    ...inventory.plugins,
+    ...inventory.mcp,
+    ...inventory.marketplaces
+  ])
+
+  return inventory
 }

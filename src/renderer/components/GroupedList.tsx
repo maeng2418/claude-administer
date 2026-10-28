@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { AssetRow } from './AssetRow.js'
 import { ExternalLinkIcon, TrashIcon } from './Icons.js'
 import type { Asset, MarketplaceAsset, PluginAsset } from '../../shared/types.js'
+import type { VerdictResult } from '../usage-verdict.js'
 
 /**
  * 자산 목록.
@@ -24,6 +25,7 @@ export function GroupedList({
   onRemove,
   onAutoUpdate,
   onUpdateNow,
+  verdictFor: verdictOf,
   busyKey,
   rowKeyFor
 }: {
@@ -39,6 +41,8 @@ export function GroupedList({
   onRemove: (asset: Asset) => void
   onAutoUpdate: (asset: MarketplaceAsset, next: boolean) => void
   onUpdateNow: (asset: Asset) => void
+  /** 행마다 사용 판정을 돌려준다. 집계 전이면 null. */
+  verdictFor: (asset: Asset) => VerdictResult | null
   busyKey: string | null
   rowKeyFor: (asset: Asset) => string
 }): React.JSX.Element {
@@ -92,6 +96,7 @@ export function GroupedList({
       inPluginGroup={inGroup}
       onGoToMarketplacePlugins={onGoToMarketplacePlugins}
       onRemove={onRemove}
+      verdict={verdictOf(asset)}
       onAutoUpdate={onAutoUpdate}
       // 그룹 안의 행은 플러그인이 제공한 자산이라 갱신 대상이 아니다.
       onUpdateNow={inGroup ? undefined : onUpdateNow}

@@ -1,6 +1,7 @@
 import { ConflictBadge, OffBadge, ScopeBadge } from './Badges.js'
 import { ExternalLinkIcon, FolderIcon, TrashIcon, UpdateIcon } from './Icons.js'
 import type { Asset, MarketplaceAsset } from '../../shared/types.js'
+import type { VerdictResult } from '../usage-verdict.js'
 
 /** 한 자산을 한 줄로 그린다. 종류별로 다른 보조 정보를 덧붙인다. */
 export function AssetRow({
@@ -11,6 +12,7 @@ export function AssetRow({
   inPluginGroup,
   onGoToMarketplacePlugins,
   onRemove,
+  verdict,
   onAutoUpdate,
   onUpdateNow,
   busy
@@ -31,6 +33,8 @@ export function AssetRow({
   /** 마켓플레이스 행에서 그 출처의 플러그인 목록으로 이동한다. */
   onGoToMarketplacePlugins?: (marketplace: string) => void
   onRemove?: (asset: Asset) => void
+  /** 사용 여부 판정. 집계 전이거나 측정 대상이 아니면 없다. */
+  verdict?: VerdictResult | null
   /** 마켓플레이스 자동 갱신을 켜거나 끈다. */
   onAutoUpdate?: (asset: MarketplaceAsset, next: boolean) => void
   /** 마켓플레이스를 지금 갱신하거나, 플러그인을 최신 버전으로 올린다. */
@@ -53,6 +57,25 @@ export function AssetRow({
           {/* 그룹 안에서는 scope 배지를 숨긴다 — 헤더가 이미 '플러그인' 이라고 말한다. */}
           {!inPluginGroup && <ScopeBadge scope={asset.scope} />}
           {isOff && <OffBadge />}
+          {/*
+            사용 판정. active 는 굳이 칠하지 않는다 — 대부분이 그 상태라
+            전부 칠하면 정작 봐야 할 미사용이 묻힌다.
+          */}
+          {verdict && verdict.verdict === 'legacy' && (
+            <span className="chip chip-warn" title={verdict.reason}>
+              미사용
+            </span>
+          )}
+          {verdict && verdict.verdict === 'unknown' && (
+            <span className="chip" title={verdict.reason}>
+              판단 보류
+            </span>
+          )}
+          {verdict && verdict.verdict === 'active' && (
+            <span className="chip chip-on" title={verdict.reason}>
+              {verdict.count}회
+            </span>
+          )}
           <ConflictBadge scope={asset.scope} shadowedBy={asset.shadowedBy ?? []} />
           <AssetExtras asset={asset} inPluginGroup={inPluginGroup} />
         </div>

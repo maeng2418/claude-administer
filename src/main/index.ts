@@ -618,7 +618,15 @@ function registerHandlers(): void {
     async (_event, refresh: unknown): Promise<UsageStats> => {
       if (refresh === true) usageStatsCache = null
       if (usageStatsCache) return usageStatsCache
-      const stats = await collectUsageStats()
+      /*
+        보존 기간은 프로젝트 설정이 사용자 설정을 덮으므로, 지금 보고
+        있는 프로젝트의 .claude 를 함께 넘긴다. 실측으로 이 저장소가
+        cleanupPeriodDays: 30 을 직접 적어두고 있었다.
+      */
+      const selected = await projects().resolveForScan(null)
+      const stats = await collectUsageStats(
+        selected ? join(selected.path, '.claude') : null
+      )
       usageStatsCache = stats
       return stats
     }

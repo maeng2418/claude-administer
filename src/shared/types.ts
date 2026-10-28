@@ -119,6 +119,13 @@ export interface AssetBase {
   /** 이 자산을 제거할 수 있는지, 못 하면 왜인지. */
   remove?: RemoveCapability
   /**
+   * 파일 수정 시각(epoch ms). 디렉토리 자산은 그 디렉토리 기준이다.
+   *
+   * 사용 판정에 쓴다 — 기록 구간보다 나중에 생긴 파일은 "안 쓴" 것이
+   * 아니라 "쓸 기회가 없던" 것이므로, 레거시로 찍지 않고 보류한다.
+   */
+  modifiedAt?: number
+  /**
    * 같은 kind·같은 name 이 다른 scope 에도 존재할 때 그 scope 목록.
    * 비어있지 않으면 UI 에 충돌 배지를 띄운다.
    */
@@ -487,6 +494,15 @@ export interface UsageStats {
    */
   oldestSessionAt: string | null
   newestSessionAt: string | null
+  /**
+   * 세션 기록 보존 기간(일).
+   *
+   * 기록이 이 기간보다 오래 남지 않으므로, 집계가 얼마짜리 창을 본
+   * 것인지 말해주는 값이다. "0회" 를 해석하려면 이 숫자가 있어야 한다.
+   */
+  retentionDays: number
+  /** 보존 기간을 어디서 읽었는지. 설정이 없으면 'default'. */
+  retentionSource: 'default' | 'user' | 'project' | 'managed'
   skills: Record<string, AssetUsage>
   commands: Record<string, AssetUsage>
   agents: Record<string, AssetUsage>
