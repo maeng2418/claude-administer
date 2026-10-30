@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "Desktop UI to inspect and manage locally installed Claude Code assets (skills, agents, commands, hooks, plugins, MCP servers)",
   "private": true,
+  "author": "김명성 <maeng2418@naver.com>",
   "type": "module",
   "main": "./out/main/index.js",
   "scripts": {
