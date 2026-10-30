@@ -140,6 +140,13 @@ npm run release   # 빌드 → .dmg 생성 → /Applications 설치 → 실행
 
 쓰기 대상은 `~/.claude/settings.json` 하나뿐이고, 모든 쓰기는 같은 경로를 지난다.
 
+<div align="center">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/safe-write-dark.png">
+  <img src="docs/diagrams/safe-write-light.png" width="720" alt="settings.json 안전 쓰기 흐름 — 파싱 성공 여부를 먼저 보고, 백업 → 담당 키만 교체 → 임시 파일 rename → 되읽어 검증을 거치며, 불일치면 백업에서 복구한다" />
+</picture>
+</div>
+
 | 단계 | 하는 일 |
 |:---:|---|
 | **1 · 백업 먼저** | `settings.json.bak-<타임스탬프>` 사본을 만든다 |
@@ -223,6 +230,7 @@ docs/
 |---|---|
 | [docs/details.md](docs/details.md) | 프로젝트 발견 · 토글과 제거 규칙 · 마켓플레이스 · 규칙 비용 · 사용 판정 · 안전장치 · 검증 기록 |
 | [docs/diagrams/architecture.html](docs/diagrams/architecture.html) | 동작 방식 다이어그램 원본 (라이트 · [다크](docs/diagrams/architecture-dark.html)) |
+| [docs/diagrams/safe-write.html](docs/diagrams/safe-write.html) | 안전 쓰기 흐름 다이어그램 원본 (라이트 · [다크](docs/diagrams/safe-write-dark.html)) |
 
 <br />
 
